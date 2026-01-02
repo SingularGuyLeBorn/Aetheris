@@ -1,6 +1,6 @@
 // FILE: src/components/FireworkScene3D.tsx
 
-import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useRef, useImperativeHandle, forwardRef, memo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
@@ -10,486 +10,471 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ParticlePool3D } from '../core/ParticlePool3D';
 import { Firework3D } from '../core/Firework3D';
 import { TimeController } from '../core/TimeController';
-import { AppSettings, CameraMode, ExplosionType } from '../types';
+import {
+  AppSettings,
+  CameraMode,
+  ExplosionType,
+  AscensionType,
+  FireworkConfig,
+  ManualConfig,
+  ColorStyle
+} from '../types';
 
-const createSoftParticleTexture = () => {
+/**
+ * 显式定义 Props 接口，确保 TypeScript 在父组件引用时不会报错
+ */
+export interface FireworkScene3DProps {
+  settings: AppSettings;
+  config: FireworkConfig;
+  manualConfig: ManualConfig;
+  autoRotate: boolean;
+  onTimeUpdate?: (timeController: TimeController) => void;
+  onStatsUpdate?: (stats: { particles: number; fireworks: number; fps: number }) => void;
+}
+
+/**
+ * 定义组件暴露给外部的操作接口
+ */
+export interface FireworkScene3DHandle {
+  launchCarnival: () => void;
+  launchAt: (x: number, y: number, z: number) => void;
+  getTimeController: () => TimeController;
+}
+
+/**
+ * 内部辅助函数：创建一个发光的粒子贴图
+ */
+const createDetailedParticleTexture = () => {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
   canvas.height = 64;
   const ctx = canvas.getContext('2d');
   if (!ctx) return new THREE.Texture();
 
-  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
-  grad.addColorStop(0.6, 'rgba(255, 255, 255, 0.2)');
-  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+  gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.3)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
-  ctx.fillStyle = grad;
+  ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 64, 64);
 
   const texture = new THREE.CanvasTexture(canvas);
-  texture.premultiplyAlpha = true;
+  texture.needsUpdate = true;
   return texture;
 };
 
-interface FireworkScene3DProps {
-  settings: AppSettings;
-  autoRotate: boolean;
-  onTimeUpdate?: (timeController: TimeController) => void;
-  onStatsUpdate?: (stats: { particles: number; fireworks: number; fps: number }) => void;
-}
+/**
+ * FireworkScene3D 核心组件
+ * 使用 React.ForwardRefRenderFunction 显式声明以获得最佳 TS 支持
+ */
+const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle, FireworkScene3DProps> = (
+    { settings, config, manualConfig, autoRotate, onTimeUpdate, onStatsUpdate },
+    ref
+) => {
+  // === 基础引用 ===
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const composerRef = useRef<EffectComposer | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const requestRef = useRef<number>(0);
 
-export interface FireworkScene3DHandle {
-  launchCarnival: () => void;
-  launchAt: (x: number, y: number, z: number) => void;
-  getTimeController: () => TimeController;
-  setCameraMode: (mode: CameraMode) => void;
-}
+  // === 业务逻辑引用 (用于在不触发 useEffect 的情况下同步状态) ===
+  const settingsRef = useRef(settings);
+  const configRef = useRef(config);
+  const manualConfigRef = useRef(manualConfig);
+  const autoRotateRef = useRef(autoRotate);
 
-export const FireworkScene3D = forwardRef<FireworkScene3DHandle, FireworkScene3DProps>(
-    ({ settings, autoRotate, onTimeUpdate, onStatsUpdate }, ref) => {
-      const containerRef = useRef<HTMLDivElement>(null);
-      const sceneRef = useRef<THREE.Scene | null>(null);
-      const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-      const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-      const controlsRef = useRef<OrbitControls | null>(null);
-      const requestRef = useRef<number | undefined>(undefined);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { configRef.current = config; }, [config]);
+  useEffect(() => { manualConfigRef.current = manualConfig; }, [manualConfig]);
+  useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
 
-      const settingsRef = useRef(settings);
-      const autoRotateRef = useRef(autoRotate);
-      const onTimeUpdateRef = useRef(onTimeUpdate);
-      const onStatsUpdateRef = useRef(onStatsUpdate);
+  // === 模拟器内部状态 ===
+  const fireworksRef = useRef<Firework3D[]>([]);
+  const particlePoolRef = useRef<ParticlePool3D>(new ParticlePool3D(30000));
+  const timeControllerRef = useRef<TimeController>(new TimeController());
 
-      useEffect(() => { settingsRef.current = settings; }, [settings]);
-      useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
-      useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
-      useEffect(() => { onStatsUpdateRef.current = onStatsUpdate; }, [onStatsUpdate]);
+  const lastAutoLaunchRef = useRef<number>(0);
+  const lastCarnivalRef = useRef<number>(0);
+  const fpsRef = useRef({ frames: 0, lastTime: 0, value: 0 });
 
-      const fireworksRef = useRef<Firework3D[]>([]);
-      const particlePoolRef = useRef<ParticlePool3D | null>(null);
-      const timeControllerRef = useRef<TimeController>(new TimeController());
+  // === 生命周期：初始化场景 ===
+  useEffect(() => {
+    if (!containerRef.current) return;
 
-      const particleGeometryRef = useRef<THREE.BufferGeometry | null>(null);
-      const starsRef = useRef<THREE.Points | null>(null);
+    // 1. 初始化场景容器
+    containerRef.current.innerHTML = '';
 
-      const lastAutoLaunchRef = useRef<number>(0);
-      const fpsRef = useRef({ frames: 0, lastTime: 0, fps: 0 });
+    // 2. 创建场景 (Scene)
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0e17);
+    scene.fog = new THREE.FogExp2(0x0a0e17, 0.0006);
+    sceneRef.current = scene;
 
-      const raycasterRef = useRef(new THREE.Raycaster());
-      const planeRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+    // 3. 创建相机 (Camera)
+    const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        1,
+        10000
+    );
+    camera.position.set(0, 150, 600);
+    cameraRef.current = camera;
 
-      const mouseDownPos = useRef({ x: 0, y: 0 });
-      const mouseDownTime = useRef(0);
+    // 4. 创建渲染器 (Renderer)
+    const renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      powerPreference: 'high-performance',
+      stencil: false,
+      depth: true
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.toneMapping = THREE.ReinhardToneMapping;
+    renderer.toneMappingExposure = 1.8;
+    containerRef.current.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
-      useEffect(() => {
-        if (!containerRef.current) return;
-        containerRef.current.innerHTML = '';
+    // 5. 配置后期处理 (EffectComposer) 实现辉光
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.2, // 强度
+        0.4, // 半径
+        0.1  // 阈值
+    );
+    composer.addPass(renderPass);
+    composer.addPass(bloomPass);
+    composerRef.current = composer;
 
-        const scene = new THREE.Scene();
-        const bgColor = new THREE.Color(0x0a0e17);
-        scene.background = bgColor;
-        scene.fog = new THREE.FogExp2(0x0a0e17, 0.0006);
-        sceneRef.current = scene;
+    // 6. 配置轨道控制器 (OrbitControls)
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 100;
+    controls.maxDistance = 2000;
+    controls.maxPolarAngle = Math.PI / 2 - 0.05;
+    controlsRef.current = controls;
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
-        camera.position.set(0, 150, 600);
-        cameraRef.current = camera;
+    // 7. 初始化粒子系统几何体
+    const maxParticles = 30000;
+    const particleGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(maxParticles * 3).fill(-10000);
+    const colors = new Float32Array(maxParticles * 3);
+    const sizes = new Float32Array(maxParticles);
 
-        const renderer = new THREE.WebGLRenderer({
-          antialias: false,
-          powerPreference: 'high-performance',
-          stencil: false,
-          depth: true
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const particleMaterial = new THREE.PointsMaterial({
+      size: 8,
+      map: createDetailedParticleTexture(),
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true
+    });
+
+    const particlePoints = new THREE.Points(particleGeometry, particleMaterial);
+    particlePoints.frustumCulled = false;
+    scene.add(particlePoints);
+
+    // 8. 创建背景元素
+    createBackgroundStars(scene);
+    createReferenceGround(scene);
+
+    // 9. 处理窗口缩放
+    const onResize = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+      composer.setSize(width, height);
+    };
+    window.addEventListener('resize', onResize);
+
+    // 10. 核心动画主循环
+    const renderLoop = () => {
+      requestRef.current = requestAnimationFrame(renderLoop);
+
+      const tc = timeControllerRef.current;
+      const currentSettings = settingsRef.current;
+      const currentConfig = configRef.current;
+
+      // 更新控制器
+      if (controlsRef.current) {
+        controlsRef.current.autoRotate = autoRotateRef.current;
+        controlsRef.current.update();
+      }
+
+      // 如果未暂停，执行物理模拟
+      if (!tc.isPaused) {
+        tc.update();
+        const dt = tc.deltaTime;
+        const virtualNow = tc.virtualTime * 1000;
+
+        // A. 自动嘉年华波次判定
+        if (currentSettings.enableAutoCarnival) {
+          if (virtualNow - lastCarnivalRef.current > currentSettings.carnivalInterval * 1000) {
+            launchCarnivalWave(currentSettings, currentConfig);
+            lastCarnivalRef.current = virtualNow;
+          }
+        }
+
+        // B. 烟花物理更新
+        for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
+          const fw = fireworksRef.current[i];
+          fw.update(currentSettings, dt);
+
+          // 升空过程：生成尾焰粒子
+          if (!fw.exploded) {
+            const speed = fw.velocity.length();
+            // 解决“太亮”问题：根据速度动态调节透明度和密度
+            const spawnProbability = Math.min(1, speed / 15);
+            const alphaValue = Math.min(1, speed / 20);
+
+            if (Math.random() < spawnProbability) {
+              const p = particlePoolRef.current.get({
+                x: fw.position.x + (Math.random() - 0.5) * 1.5,
+                y: fw.position.y - 1,
+                z: fw.position.z + (Math.random() - 0.5) * 1.5,
+                hue: fw.hue,
+                speed: 0,
+                size: 5 * (speed / 30 + 0.5),
+                decay: 0.08,
+                behavior: 'default',
+                gravity: 0.02
+              });
+              if (p) p.alpha = alphaValue;
+            }
+          }
+
+          // 爆炸逻辑
+          if (fw.exploded) {
+            fw.createExplosion(currentSettings, (opts) => particlePoolRef.current.get(opts));
+            fireworksRef.current.splice(i, 1);
+          }
+        }
+
+        // C. 全局粒子物理更新
+        particlePoolRef.current.update(dt);
+      }
+
+      // D. 同步粒子 Buffer 到 GPU
+      const activeParticles = particlePoolRef.current.getActiveParticles();
+      const posArray = particleGeometry.attributes.position.array as Float32Array;
+      const colArray = particleGeometry.attributes.color.array as Float32Array;
+
+      for (let i = 0; i < activeParticles.length; i++) {
+        const p = activeParticles[i];
+        const idx = i * 3;
+        posArray[idx] = p.position.x;
+        posArray[idx + 1] = p.position.y;
+        posArray[idx + 2] = p.position.z;
+
+        const color = p.getColor();
+        colArray[idx] = color.r * p.alpha;
+        colArray[idx + 1] = color.g * p.alpha;
+        colArray[idx + 2] = color.b * p.alpha;
+      }
+
+      // 隐藏非活动粒子
+      for (let i = activeParticles.length; i < maxParticles; i++) {
+        const idx = i * 3;
+        if (posArray[idx + 1] > -5000) {
+          posArray[idx] = 0;
+          posArray[idx + 1] = -10000;
+          posArray[idx + 2] = 0;
+        } else if (i > activeParticles.length + 200) {
+          break; // 优化：如果已经是一块连续的隐藏区则停止
+        }
+      }
+
+      particleGeometry.attributes.position.needsUpdate = true;
+      particleGeometry.attributes.color.needsUpdate = true;
+
+      // E. 更新星星闪烁
+      updateStarsTwinkle(performance.now() * 0.0005);
+
+      // F. FPS 统计
+      fpsRef.current.frames++;
+      if (performance.now() - fpsRef.current.lastTime > 1000) {
+        fpsRef.current.value = fpsRef.current.frames;
+        fpsRef.current.frames = 0;
+        fpsRef.current.lastTime = performance.now();
+      }
+
+      // G. 渲染
+      composer.render();
+
+      // H. 回调
+      if (onTimeUpdate) onTimeUpdate(tc);
+      if (onStatsUpdate) {
+        onStatsUpdate({
+          particles: activeParticles.length,
+          fireworks: fireworksRef.current.length,
+          fps: fpsRef.current.value
         });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-        renderer.toneMapping = THREE.ReinhardToneMapping;
-        renderer.toneMappingExposure = 1.8;
-        containerRef.current.appendChild(renderer.domElement);
-        rendererRef.current = renderer;
+      }
+    };
 
-        const renderScene = new RenderPass(scene, camera);
-        const bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            1.2, 0.4, 0.1
-        );
-        const composer = new EffectComposer(renderer);
-        composer.addPass(renderScene);
-        composer.addPass(bloomPass);
+    renderLoop();
 
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.minDistance = 100;
-        controls.maxDistance = 1500;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05;
-        controls.minPolarAngle = 0.2;
-        controls.autoRotate = autoRotateRef.current;
-        controls.autoRotateSpeed = 0.8;
-        controlsRef.current = controls;
+    return () => {
+      window.removeEventListener('resize', onResize);
+      cancelAnimationFrame(requestRef.current);
+      renderer.dispose();
+      controls.dispose();
+    };
+  }, []);
 
-        particlePoolRef.current = new ParticlePool3D(18000);
+  // === 内部方法实现 ===
 
-        const particleGeometry = new THREE.BufferGeometry();
-        const maxParticles = 18000;
-        const positions = new Float32Array(maxParticles * 3);
-        const colors = new Float32Array(maxParticles * 3);
-        const sizes = new Float32Array(maxParticles);
+  const launchCarnivalWave = (s: AppSettings, c: FireworkConfig) => {
+    const waveSize = 8 + Math.floor(Math.random() * 8);
+    for (let i = 0; i < waveSize; i++) {
+      setTimeout(() => {
+        const targetX = (Math.random() - 0.5) * 800;
+        const targetZ = (Math.random() - 0.5) * 800;
+        const targetY = 200 + Math.random() * 150;
 
-        for(let i=0; i<maxParticles * 3; i++) positions[i] = 0;
-        for(let i=1; i<maxParticles * 3; i+=3) positions[i] = -10000;
-
-        particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-        particleGeometryRef.current = particleGeometry;
-
-        const particleMaterial = new THREE.PointsMaterial({
-          size: 8,
-          map: createSoftParticleTexture(),
-          vertexColors: true,
-          transparent: true,
-          opacity: 1,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          sizeAttenuation: true
-        });
-
-        const particlePoints = new THREE.Points(particleGeometry, particleMaterial);
-        particlePoints.frustumCulled = false;
-        scene.add(particlePoints);
-
-        createStars(scene);
-        createGround(scene);
-
-        const handleResize = () => {
-          if (!cameraRef.current || !rendererRef.current) return;
-          const width = window.innerWidth;
-          const height = window.innerHeight;
-          cameraRef.current.aspect = width / height;
-          cameraRef.current.updateProjectionMatrix();
-          rendererRef.current.setSize(width, height);
-          composer.setSize(width, height);
-        };
-        window.addEventListener('resize', handleResize);
-
-        const animate = () => {
-          requestRef.current = requestAnimationFrame(animate);
-
-          const timeController = timeControllerRef.current;
-          const currentSettings = settingsRef.current;
-
-          if (controlsRef.current) {
-            controlsRef.current.autoRotate = autoRotateRef.current;
-            controlsRef.current.update();
-          }
-
-          if (!timeController.isPaused) {
-            timeController.update();
-            const deltaTime = timeController.deltaTime;
-            const virtualTime = timeController.virtualTime * 1000;
-
-            if (virtualTime - lastAutoLaunchRef.current > currentSettings.autoLaunchDelay) {
-              launchFireworkInternal(
-                  (Math.random() - 0.5) * 500,
-                  180 + Math.random() * 120,
-                  (Math.random() - 0.5) * 500,
-                  undefined,
-                  undefined,
-                  currentSettings
-              );
-              lastAutoLaunchRef.current = virtualTime;
-            }
-
-            for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
-              const fw = fireworksRef.current[i];
-              fw.update(currentSettings, deltaTime);
-
-              // === 升空形态逻辑 (Shaped Ascension) ===
-              if (!fw.exploded) {
-                // 通用尾焰参数
-                const trailHue = fw.hue; // 修复：使用烟花本身的颜色
-
-                // 根据类型产生不同的升空粒子
-                if (fw.type === ExplosionType.DRAGON) {
-                  // 游龙：螺旋上升
-                  const spinSpeed = 10;
-                  const radius = 3;
-                  const angle = fw.lifeTime * spinSpeed;
-                  const tx = Math.cos(angle) * radius;
-                  const tz = Math.sin(angle) * radius;
-
-                  particlePoolRef.current?.get({
-                    x: fw.position.x + tx,
-                    y: fw.position.y,
-                    z: fw.position.z + tz,
-                    hue: 45, // 金龙
-                    speed: 0,
-                    size: 6,
-                    decay: 0.1,
-                    behavior: 'glitter' // 闪烁龙鳞
-                  });
-                } else if (fw.type === ExplosionType.BUTTERFLY) {
-                  // 蝴蝶：两侧摆动
-                  const wingSpan = 4 * Math.abs(Math.sin(fw.lifeTime * 15));
-                  particlePoolRef.current?.get({
-                    x: fw.position.x + wingSpan,
-                    y: fw.position.y,
-                    z: fw.position.z,
-                    hue: trailHue,
-                    size: 5, decay: 0.15
-                  });
-                  particlePoolRef.current?.get({
-                    x: fw.position.x - wingSpan,
-                    y: fw.position.y,
-                    z: fw.position.z,
-                    hue: trailHue,
-                    size: 5, decay: 0.15
-                  });
-                } else if (fw.type === ExplosionType.HELIX || fw.type === ExplosionType.ZODIAC) {
-                  // 螺旋：DNA上升
-                  const angle = fw.lifeTime * 8;
-                  const r = 2;
-                  particlePoolRef.current?.get({
-                    x: fw.position.x + Math.cos(angle)*r, y: fw.position.y, z: fw.position.z + Math.sin(angle)*r,
-                    hue: trailHue, size: 4, decay: 0.1
-                  });
-                  particlePoolRef.current?.get({
-                    x: fw.position.x - Math.cos(angle)*r, y: fw.position.y, z: fw.position.z - Math.sin(angle)*r,
-                    hue: (trailHue+180)%360, size: 4, decay: 0.1
-                  });
-                } else {
-                  // 默认：强力火箭尾焰
-                  // 增加密集度，防止断层
-                  for(let k=0; k<3; k++) {
-                    particlePoolRef.current?.get({
-                      x: fw.position.x + (Math.random()-0.5) * 1.0,
-                      y: fw.position.y - k*1.5,
-                      z: fw.position.z + (Math.random()-0.5) * 1.0,
-                      hue: trailHue,
-                      speed: 0,
-                      size: 5,
-                      decay: 0.08,
-                      behavior: 'default',
-                      gravity: 0.02
-                    });
-                  }
-                }
-              }
-
-              if (fw.exploded) {
-                fw.createExplosion(currentSettings, (opts) => particlePoolRef.current!.get(opts));
-                fireworksRef.current.splice(i, 1);
-              }
-            }
-
-            particlePoolRef.current?.update(deltaTime);
-          }
-
-          updateParticleGeometry();
-          updateStars(performance.now() * 0.0005);
-
-          fpsRef.current.frames++;
-          const now = performance.now();
-          if (now - fpsRef.current.lastTime >= 1000) {
-            fpsRef.current.fps = fpsRef.current.frames;
-            fpsRef.current.frames = 0;
-            fpsRef.current.lastTime = now;
-          }
-
-          composer.render();
-
-          if (onTimeUpdateRef.current) onTimeUpdateRef.current(timeController);
-          if (onStatsUpdateRef.current) {
-            onStatsUpdateRef.current({
-              particles: particlePoolRef.current?.activeCount ?? 0,
-              fireworks: fireworksRef.current.length,
-              fps: fpsRef.current.fps
-            });
-          }
-        };
-
-        requestRef.current = requestAnimationFrame(animate);
-
-        return () => {
-          window.removeEventListener('resize', handleResize);
-          if (requestRef.current) cancelAnimationFrame(requestRef.current);
-          if (controlsRef.current) controlsRef.current.dispose();
-          if (rendererRef.current) {
-            rendererRef.current.dispose();
-            rendererRef.current.forceContextLoss();
-            if(containerRef.current && rendererRef.current.domElement && containerRef.current.contains(rendererRef.current.domElement)) {
-              containerRef.current.removeChild(rendererRef.current.domElement);
-            }
-          }
-        };
-      }, []);
-
-      const launchFireworkInternal = (x: number, y: number, z: number, hue?: number, charge?: number, currentSettings?: AppSettings) => {
-        const s = currentSettings || settingsRef.current;
-        const startX = (Math.random() - 0.5) * 400;
-        const startZ = (Math.random() - 0.5) * 400;
-
-        fireworksRef.current.push(new Firework3D({
-          startX,
-          startZ,
-          targetX: x,
-          targetY: y,
-          targetZ: z,
-          hue: hue ?? Math.random() * 360,
-          charge: charge ?? 0.4 + Math.random() * 0.6
-        }, s));
-      };
-
-      const createStars = (scene: THREE.Scene) => {
-        const starGeometry = new THREE.BufferGeometry();
-        const starCount = 3000;
-        const positions = new Float32Array(starCount * 3);
-        const colors = new Float32Array(starCount * 3);
-        const sizes = new Float32Array(starCount);
-
-        for (let i = 0; i < starCount; i++) {
-          const r = 2000 + Math.random() * 3000;
-          const theta = Math.random() * Math.PI * 2;
-          const phi = Math.acos(2 * Math.random() - 1);
-          positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
-          positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
-          positions[i*3+2] = r * Math.cos(phi);
-
-          colors[i*3] = 0.8; colors[i*3+1] = 0.9; colors[i*3+2] = 1.0;
-          sizes[i] = Math.random() * 2;
-        }
-        starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
-        const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
-          size: 3, vertexColors: true, transparent: true, opacity: 0.6, sizeAttenuation: false
-        }));
-        scene.add(stars);
-        starsRef.current = stars;
-      };
-
-      const createGround = (scene: THREE.Scene) => {
-        const grid = new THREE.GridHelper(6000, 60, 0x334455, 0x111e2f);
-        (grid.material as THREE.Material).transparent = true;
-        (grid.material as THREE.Material).opacity = 0.15;
-        grid.position.y = -5;
-        scene.add(grid);
-      };
-
-      const updateParticleGeometry = () => {
-        if (!particleGeometryRef.current || !particlePoolRef.current) return;
-        const particles = particlePoolRef.current.getActiveParticles();
-        const positions = particleGeometryRef.current.attributes.position.array as Float32Array;
-        const colors = particleGeometryRef.current.attributes.color.array as Float32Array;
-        const sizes = particleGeometryRef.current.attributes.size.array as Float32Array;
-
-        for (let i = 0; i < particles.length; i++) {
-          const p = particles[i];
-          const i3 = i * 3;
-          positions[i3] = p.position.x;
-          positions[i3+1] = p.position.y;
-          positions[i3+2] = p.position.z;
-
-          const col = p.getColor();
-          colors[i3] = col.r * p.alpha;
-          colors[i3+1] = col.g * p.alpha;
-          colors[i3+2] = col.b * p.alpha;
-
-          sizes[i] = p.size * (p.behavior === 'glitter' && p.twinkleFactor > 0.5 ? 0.3 : 1);
-        }
-
-        for (let i = particles.length; i < 18000; i++) {
-          if (positions[i*3+1] > -5000) {
-            positions[i*3] = 0; positions[i*3+1] = -10000; positions[i*3+2] = 0;
-            sizes[i] = 0;
-          } else {
-            if (i > particles.length + 500) break;
-          }
-        }
-
-        particleGeometryRef.current.attributes.position.needsUpdate = true;
-        particleGeometryRef.current.attributes.color.needsUpdate = true;
-        particleGeometryRef.current.attributes.size.needsUpdate = true;
-      };
-
-      const updateStars = (time: number) => {
-        if (!starsRef.current) return;
-        const colors = starsRef.current.geometry.attributes.color.array as Float32Array;
-        for(let i=0; i<colors.length; i+=3) {
-          const flicker = 0.8 + 0.2 * Math.sin(time + i);
-          colors[i] = 0.8 * flicker;
-          colors[i+1] = 0.9 * flicker;
-          colors[i+2] = 1.0 * flicker;
-        }
-        starsRef.current.geometry.attributes.color.needsUpdate = true;
-      };
-
-      useImperativeHandle(ref, () => ({
-        launchCarnival: () => {
-          const burst = (c:number) => {
-            for(let i=0; i<c; i++) {
-              setTimeout(() => launchFireworkInternal(
-                  (Math.random()-0.5)*600, 200+Math.random()*100, (Math.random()-0.5)*600
-              ), i * 150);
-            }
-          };
-          burst(10);
-          setTimeout(() => burst(15), 2000);
-        },
-        launchAt: (x, y, z) => launchFireworkInternal(x, y, z),
-        getTimeController: () => timeControllerRef.current,
-        setCameraMode: () => {}
-      }));
-
-      // === 修复后的鼠标事件逻辑 (无需 Shift) ===
-      const handleMouseDown = (e: React.MouseEvent) => {
-        if (e.button === 0) {
-          mouseDownPos.current = { x: e.clientX, y: e.clientY };
-          mouseDownTime.current = performance.now();
-        }
-      };
-
-      const handleMouseUp = (e: React.MouseEvent) => {
-        if (e.button === 0 && cameraRef.current) {
-          // 计算移动距离
-          const dist = Math.sqrt(
-              Math.pow(e.clientX - mouseDownPos.current.x, 2) +
-              Math.pow(e.clientY - mouseDownPos.current.y, 2)
-          );
-          const timeDiff = performance.now() - mouseDownTime.current;
-
-          // 阈值判断：移动小于 5 像素且时间小于 300ms 视为点击，否则视为拖拽旋转
-          if (dist < 5 && timeDiff < 300) {
-            const rect = containerRef.current?.getBoundingClientRect();
-            if (!rect) return;
-            const mouse = new THREE.Vector2(
-                ((e.clientX - rect.left) / rect.width) * 2 - 1,
-                -((e.clientY - rect.top) / rect.height) * 2 + 1
-            );
-            raycasterRef.current.setFromCamera(mouse, cameraRef.current);
-            const target = new THREE.Vector3();
-            raycasterRef.current.ray.intersectPlane(planeRef.current, target);
-
-            if (target) {
-              launchFireworkInternal(target.x, 200, target.z, undefined, 0.8);
-            }
-          }
-        }
-      };
-
-      return (
-          <div
-              ref={containerRef}
-              className="w-full h-full block cursor-pointer outline-none"
-              onMouseDown={handleMouseDown}
-              onMouseUp={handleMouseUp}
-              title="Left Click: Launch | Drag: Rotate"
-          />
-      );
+        fireworksRef.current.push(new Firework3D(
+            {
+              startX: (Math.random() - 0.5) * 1000,
+              startZ: (Math.random() - 0.5) * 1000,
+              targetX, targetY, targetZ,
+              hue: Math.random() * 360,
+              charge: 1.0
+            },
+            s, c
+        ));
+      }, i * 120);
     }
-);
+  };
+
+  const createBackgroundStars = (scene: THREE.Scene) => {
+    const starGeo = new THREE.BufferGeometry();
+    const count = 4000;
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      const r = 3000 + Math.random() * 2000;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      pos[i * 3 + 2] = r * Math.cos(phi);
+      col[i * 3] = 0.8; col[i * 3 + 1] = 0.8; col[i * 3 + 2] = 1.0;
+    }
+
+    starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+    const starMat = new THREE.PointsMaterial({
+      size: 3, vertexColors: true, transparent: true, opacity: 0.5, sizeAttenuation: false
+    });
+    scene.add(new THREE.Points(starGeo, starMat));
+  };
+
+  const createReferenceGround = (scene: THREE.Scene) => {
+    const grid = new THREE.GridHelper(8000, 80, 0x223344, 0x05101a);
+    const gridMat = grid.material as THREE.Material;
+    gridMat.transparent = true;
+    gridMat.opacity = 0.1;
+    grid.position.y = -10;
+    scene.add(grid);
+  };
+
+  const updateStarsTwinkle = (time: number) => {
+    const stars = sceneRef.current?.children.find(c => c instanceof THREE.Points && !(c.material as any).map);
+    if (stars && stars instanceof THREE.Points) {
+      const colors = stars.geometry.attributes.color.array as Float32Array;
+      for (let i = 0; i < colors.length; i += 3) {
+        const f = 0.7 + 0.3 * Math.sin(time + i);
+        colors[i] = 0.8 * f;
+        colors[i + 1] = 0.8 * f;
+        colors[i + 2] = 1.0 * f;
+      }
+      stars.geometry.attributes.color.needsUpdate = true;
+    }
+  };
+
+  // === 暴露接口给父组件 ===
+  useImperativeHandle(ref, () => ({
+    launchCarnival: () => launchCarnivalWave(settingsRef.current, configRef.current),
+    launchAt: (x, y, z) => {
+      const mc = manualConfigRef.current;
+      const fwConfig: FireworkConfig = {
+        enabledShapes: mc.lockedShape === 'RANDOM' ? configRef.current.enabledShapes : [mc.lockedShape as ExplosionType],
+        enabledAscensions: configRef.current.enabledAscensions,
+        enabledColors: mc.lockedColor === 'RANDOM' ? configRef.current.enabledColors : [mc.lockedColor as ColorStyle]
+      };
+
+      fireworksRef.current.push(new Firework3D(
+          {
+            startX: x + (Math.random() - 0.5) * 50,
+            startZ: z + (Math.random() - 0.5) * 50,
+            targetX: x, targetY: 200, targetZ: z,
+            hue: Math.random() * 360,
+            charge: 1.0
+          },
+          settingsRef.current,
+          fwConfig
+      ));
+    },
+    getTimeController: () => timeControllerRef.current
+  }));
+
+  // === 鼠标交互事件 ===
+  const handleInteraction = (e: React.MouseEvent) => {
+    if (e.button === 0 && cameraRef.current && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(mouse, cameraRef.current);
+      const targetPoint = new THREE.Vector3();
+      ray.ray.intersectPlane(planeRef.current, targetPoint);
+
+      if (targetPoint) {
+        // 通过 Ref 获取自身暴露的接口进行发射
+        // @ts-ignore
+        ref.current?.launchAt(targetPoint.x, targetPoint.y, targetPoint.z);
+      }
+    }
+  };
+
+  return (
+      <div
+          ref={containerRef}
+          className="w-full h-full block cursor-crosshair outline-none"
+          onMouseDown={(e) => {
+            mouseDownPos.current = { x: e.clientX, y: e.clientY };
+            mouseDownTime.current = performance.now();
+          }}
+          onMouseUp={(e) => {
+            const dist = Math.sqrt(Math.pow(e.clientX - mouseDownPos.current.x, 2) + Math.pow(e.clientY - mouseDownPos.current.y, 2));
+            if (dist < 5 && (performance.now() - mouseDownTime.current) < 300) {
+              handleInteraction(e);
+            }
+          }}
+      />
+  );
+};
+
+// 封装导出
+export const FireworkScene3D = memo(forwardRef(FireworkScene3DInner));
 
 // END OF FILE: src/components/FireworkScene3D.tsx

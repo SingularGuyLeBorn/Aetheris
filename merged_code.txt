@@ -110,177 +110,157 @@ export default App;
 // FILE: src\App3D.tsx
 // =============================================================================
 
+// FILE: src/App3D.tsx
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FireworkScene3D, FireworkScene3DHandle } from './components/FireworkScene3D';
 import { SettingsPanel } from './components/ui/SettingsPanel';
 import { TimeControlPanel } from './components/ui/TimeControlPanel';
 import { HUD3D } from './components/ui/HUD3D';
-import { AppSettings, DEFAULT_SETTINGS, CameraMode } from './types';
+import { AppSettings, DEFAULT_SETTINGS, FireworkConfig, DEFAULT_CONFIG, ManualConfig, DEFAULT_MANUAL_CONFIG } from './types';
 import { TimeController } from './core/TimeController';
 
-const STORAGE_KEY = 'celestial_fireworks_3d_settings';
+const SETTINGS_KEY = 'celestial_fireworks_v6_settings';
+const CONFIG_KEY = 'celestial_fireworks_v6_config';
+const MANUAL_KEY = 'celestial_fireworks_v6_manual';
 
 const App3D: React.FC = () => {
-  const sceneRef = useRef<FireworkScene3DHandle>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  
-  // Time controller state
-  const [timeController, setTimeController] = useState<TimeController | null>(null);
-  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
-  const [stats, setStats] = useState({ particles: 0, fireworks: 0, fps: 0 });
-  
-  // Settings state
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object' && 'gravity' in parsed) {
-          return { ...DEFAULT_SETTINGS, ...parsed };
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load settings from localStorage', e);
-    }
-    return DEFAULT_SETTINGS;
-  });
+    const sceneRef = useRef<FireworkScene3DHandle>(null);
+    const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  }, [settings]);
+    const [timeController, setTimeController] = useState<TimeController | null>(null);
+    const [stats, setStats] = useState({ particles: 0, fireworks: 0, fps: 0 });
+    const [autoRotate, setAutoRotate] = useState(true);
 
-  const updateSetting = (key: keyof AppSettings, value: number) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-  };
-
-  const randomizeSettings = () => {
-    setSettings({
-      gravity: Number((Math.random() * 0.12 + 0.04).toFixed(3)),
-      friction: Number((0.92 + Math.random() * 0.07).toFixed(3)),
-      autoLaunchDelay: Math.floor(1000 + Math.random() * 6000),
-      particleCountMultiplier: Number((0.6 + Math.random() * 1.6).toFixed(2)),
-      explosionSizeMultiplier: Number((0.6 + Math.random() * 1.6).toFixed(2)),
-      starBlinkSpeed: Number((0.0003 + Math.random() * 0.002).toFixed(5)),
-      trailLength: Math.floor(5 + Math.random() * 30)
+    // 物理与嘉年华设置
+    const [settings, setSettings] = useState<AppSettings>(() => {
+        try {
+            const saved = localStorage.getItem(SETTINGS_KEY);
+            if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        } catch (e) {}
+        return DEFAULT_SETTINGS;
     });
-  };
 
-  // Time control handlers
-  const handleTimeUpdate = useCallback((tc: TimeController) => {
-    setTimeController(tc);
-  }, []);
+    // 嘉年华样式库
+    const [config, setConfig] = useState<FireworkConfig>(() => {
+        try {
+            const saved = localStorage.getItem(CONFIG_KEY);
+            if (saved) return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
+        } catch (e) {}
+        return DEFAULT_CONFIG;
+    });
 
-  const handleStatsUpdate = useCallback((newStats: { particles: number; fireworks: number; fps: number }) => {
-    setStats(newStats);
-  }, []);
+    // 单发（鼠标点击）配置
+    const [manualConfig, setManualConfig] = useState<ManualConfig>(() => {
+        try {
+            const saved = localStorage.getItem(MANUAL_KEY);
+            if (saved) return { ...DEFAULT_MANUAL_CONFIG, ...JSON.parse(saved) };
+        } catch (e) {}
+        return DEFAULT_MANUAL_CONFIG;
+    });
 
-  const handleTimeScaleChange = (scale: number) => {
-    sceneRef.current?.getTimeController()?.timeScale === scale;
-    const tc = sceneRef.current?.getTimeController();
-    if (tc) {
-      tc.timeScale = scale;
-    }
-  };
+    useEffect(() => { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings]);
+    useEffect(() => { localStorage.setItem(CONFIG_KEY, JSON.stringify(config)); }, [config]);
+    useEffect(() => { localStorage.setItem(MANUAL_KEY, JSON.stringify(manualConfig)); }, [manualConfig]);
 
-  const handleTogglePause = () => {
-    sceneRef.current?.getTimeController()?.togglePause();
-  };
+    const updateSetting = (key: keyof AppSettings, value: number | boolean) => {
+        setSettings(prev => ({ ...prev, [key]: value }));
+    };
 
-  const handleCameraModeChange = (mode: CameraMode) => {
-    setCameraMode(mode);
-    sceneRef.current?.setCameraMode(mode);
-  };
+    const handleTimeUpdate = useCallback((tc: TimeController) => {
+        setTimeController(tc);
+    }, []);
 
-  return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden font-sans text-white select-none">
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.5); }
-        
+    const handleStatsUpdate = useCallback((newStats: { particles: number; fireworks: number; fps: number }) => {
+        setStats(newStats);
+    }, []);
+
+    return (
+        <div className="relative w-screen h-screen bg-gray-50 overflow-hidden font-sans text-gray-800 select-none">
+            <style>{`
         input[type="range"]::-webkit-slider-thumb {
           appearance: none;
-          width: 14px;
-          height: 14px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #06b6d4, #a855f7);
-          cursor: pointer;
-          box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+          width: 14px; height: 14px; border-radius: 50%; background: #4B5563;
+          cursor: pointer; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
-        
-        input[type="range"]::-moz-range-thumb {
-          width: 14px;
-          height: 14px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #06b6d4, #a855f7);
-          cursor: pointer;
-          border: none;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
       `}</style>
 
-      <HUD3D />
+            <HUD3D />
 
-      {/* 主控按钮 */}
-      <div className="absolute top-10 right-10 z-20 flex flex-col gap-5 items-end">
-        <button 
-          onClick={() => sceneRef.current?.launchCarnival()}
-          className="group relative px-10 py-5 bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-2xl font-black text-sm tracking-[0.3em] hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-purple-500/40 overflow-hidden border border-white/10"
-        >
-          <span className="relative z-10 flex items-center gap-3">
-            <span className="animate-bounce">🎆</span> 开启 3D 嘉年华 🎆
+            <div className="absolute top-8 right-8 z-20 flex flex-col gap-4 items-end">
+                <button
+                    onClick={() => sceneRef.current?.launchCarnival()}
+                    className="group relative px-6 py-3 bg-white/80 backdrop-blur-md rounded-xl font-bold text-xs tracking-[0.15em] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-gray-200 border border-white/50 overflow-hidden"
+                >
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-100 to-blue-100 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <span className="relative z-10 flex items-center gap-2 text-gray-800 group-hover:text-purple-700">
+            <span>🎉</span> GRAND CARNIVAL
           </span>
-          <div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
-        </button>
-        <button 
-          onClick={() => setShowSettings(!showSettings)}
-          className="p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all backdrop-blur-xl shadow-2xl flex items-center gap-2 group"
-        >
-          <SettingsIcon className="w-6 h-6 text-purple-400 group-hover:rotate-90 transition-transform" />
-          <span className="text-xs font-bold tracking-widest text-purple-400/80 pr-1">引擎配置</span>
-        </button>
-      </div>
+                </button>
+                <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="p-3 bg-white/80 hover:bg-white rounded-xl shadow-lg border border-white/50 transition-all text-gray-500 hover:text-blue-600 active:scale-95"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+            </div>
 
-      {/* 3D Scene */}
-      <FireworkScene3D 
-        ref={sceneRef} 
-        settings={settings}
-        onTimeUpdate={handleTimeUpdate}
-        onStatsUpdate={handleStatsUpdate}
-      />
+            <FireworkScene3D
+                ref={sceneRef}
+                settings={settings}
+                config={config}
+                manualConfig={manualConfig}
+                autoRotate={autoRotate}
+                onTimeUpdate={handleTimeUpdate}
+                onStatsUpdate={handleStatsUpdate}
+            />
 
-      {/* Time Control Panel */}
-      <TimeControlPanel
-        timeController={timeController}
-        cameraMode={cameraMode}
-        stats={stats}
-        onCameraModeChange={handleCameraModeChange}
-        onTimeScaleChange={handleTimeScaleChange}
-        onTogglePause={handleTogglePause}
-      />
+            <TimeControlPanel
+                timeController={timeController}
+                stats={stats}
+                onTimeScaleChange={(s) => {
+                    // 修复 TS2779: 使用明确的 if 检查替代可选链赋值
+                    const handle = sceneRef.current;
+                    if (handle) {
+                        handle.getTimeController().timeScale = s;
+                    }
+                }}
+                onTogglePause={() => {
+                    sceneRef.current?.getTimeController().togglePause();
+                }}
+                autoRotate={autoRotate}
+                onToggleAutoRotate={() => setAutoRotate(!autoRotate)}
+            />
 
-      {/* Settings Panel */}
-      <SettingsPanel 
-        show={showSettings} 
-        settings={settings} 
-        onClose={() => setShowSettings(false)}
-        onUpdate={updateSetting}
-        onRandomize={randomizeSettings}
-        onReset={() => setSettings(DEFAULT_SETTINGS)}
-      />
-    </div>
-  );
+            <SettingsPanel
+                show={showSettings}
+                settings={settings}
+                config={config}
+                manualConfig={manualConfig}
+                onClose={() => setShowSettings(false)}
+                onUpdate={updateSetting}
+                onUpdateConfig={setConfig}
+                onUpdateManual={setManualConfig}
+                onRandomize={() => {}}
+                onReset={() => {
+                    setSettings(DEFAULT_SETTINGS);
+                    setConfig(DEFAULT_CONFIG);
+                    setManualConfig(DEFAULT_MANUAL_CONFIG);
+                }}
+            />
+        </div>
+    );
 };
-
-const SettingsIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
 
 export default App3D;
 
+// END OF FILE: src/App3D.tsx
 
 // =============================================================================
 // FILE: src\components\FireworkCanvas.tsx
@@ -550,15 +530,41 @@ export const FireworkCanvas = forwardRef<FireworkCanvasHandle, FireworkCanvasPro
 // FILE: src\components\FireworkScene3D.tsx
 // =============================================================================
 
-import React, { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
-import * as THREE from 'three';
-import { ParticlePool3D } from '../core/ParticlePool3D';
-import { Firework3D, Firework3DOptions } from '../core/Firework3D';
-import { TimeController } from '../core/TimeController';
-import { AppSettings, CameraMode } from '../types';
+// FILE: src/components/FireworkScene3D.tsx
 
+import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+
+import { ParticlePool3D } from '../core/ParticlePool3D';
+import { Firework3D } from '../core/Firework3D';
+import { TimeController } from '../core/TimeController';
+import { AppSettings, CameraMode, ExplosionType, AscensionType, FireworkConfig, ManualConfig, ColorStyle } from '../types';
+
+const createSoftParticleTexture = () => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return new THREE.Texture();
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+  grad.addColorStop(0.6, 'rgba(255, 255, 255, 0.2)');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, 64, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.premultiplyAlpha = true; return texture;
+};
+
+// 修复 TS 错误：明确定义 Props
 interface FireworkScene3DProps {
   settings: AppSettings;
+  config: FireworkConfig; // 嘉年华白名单
+  manualConfig: ManualConfig; // 单发配置
+  autoRotate: boolean;
   onTimeUpdate?: (timeController: TimeController) => void;
   onStatsUpdate?: (stats: { particles: number; fireworks: number; fps: number }) => void;
 }
@@ -570,709 +576,383 @@ export interface FireworkScene3DHandle {
   setCameraMode: (mode: CameraMode) => void;
 }
 
-export const FireworkScene3D = forwardRef<FireworkScene3DHandle, FireworkScene3DProps>(
-  ({ settings, onTimeUpdate, onStatsUpdate }, ref) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const sceneRef = useRef<THREE.Scene | null>(null);
-    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-    const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-    const requestRef = useRef<number | undefined>(undefined);
+export const FireworkScene3D = forwardRef(
+    ({ settings, config, manualConfig, autoRotate, onTimeUpdate, onStatsUpdate }: FireworkScene3DProps, ref: React.Ref<FireworkScene3DHandle>) => {
+      const containerRef = useRef<HTMLDivElement>(null);
+      const sceneRef = useRef<THREE.Scene | null>(null);
+      const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+      const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+      const controlsRef = useRef<OrbitControls | null>(null);
+      const requestRef = useRef<number | undefined>(undefined);
 
-    // 3D objects
-    const fireworksRef = useRef<Firework3D[]>([]);
-    const particlePoolRef = useRef<ParticlePool3D | null>(null);
-    const timeControllerRef = useRef<TimeController>(new TimeController());
+      const settingsRef = useRef(settings);
+      const configRef = useRef(config);
+      const manualConfigRef = useRef(manualConfig);
+      const autoRotateRef = useRef(autoRotate);
+      const onTimeUpdateRef = useRef(onTimeUpdate);
+      const onStatsUpdateRef = useRef(onStatsUpdate);
 
-    // Particle system
-    const particleGeometryRef = useRef<THREE.BufferGeometry | null>(null);
-    const particleMaterialRef = useRef<THREE.PointsMaterial | null>(null);
-    const particlePointsRef = useRef<THREE.Points | null>(null);
+      useEffect(() => { settingsRef.current = settings; }, [settings]);
+      useEffect(() => { configRef.current = config; }, [config]);
+      useEffect(() => { manualConfigRef.current = manualConfig; }, [manualConfig]);
+      useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
+      useEffect(() => { onTimeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
+      useEffect(() => { onStatsUpdateRef.current = onStatsUpdate; }, [onStatsUpdate]);
 
-    // Firework trail system
-    const trailGeometryRef = useRef<THREE.BufferGeometry | null>(null);
-    const trailMaterialRef = useRef<THREE.LineBasicMaterial | null>(null);
-    const trailLinesRef = useRef<THREE.LineSegments | null>(null);
+      const fireworksRef = useRef<Firework3D[]>([]);
+      const particlePoolRef = useRef<ParticlePool3D | null>(null);
+      const timeControllerRef = useRef<TimeController>(new TimeController());
 
-    // Stars
-    const starsRef = useRef<THREE.Points | null>(null);
+      const particleGeometryRef = useRef<THREE.BufferGeometry | null>(null);
+      const starsRef = useRef<THREE.Points | null>(null);
 
-    // Ground grid
-    const groundRef = useRef<THREE.Mesh | null>(null);
+      const lastAutoLaunchRef = useRef<number>(0);
+      const lastCarnivalRef = useRef<number>(0); // 嘉年华自动计时
+      const fpsRef = useRef({ frames: 0, lastTime: 0, fps: 0 });
+      const raycasterRef = useRef(new THREE.Raycaster());
+      const planeRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+      const mouseDownPos = useRef({ x: 0, y: 0 });
+      const mouseDownTime = useRef(0);
 
-    // Camera control
-    const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
-    const cameraModeRef = useRef<CameraMode>('orbit');
-    
-    // Orbit control state
-    const orbitRef = useRef({
-      theta: 0,
-      phi: Math.PI / 3,
-      distance: 500,
-      target: new THREE.Vector3(0, 150, 0),
-      isDragging: false,
-      lastMouseX: 0,
-      lastMouseY: 0
-    });
+      useEffect(() => {
+        if (!containerRef.current) return;
+        containerRef.current.innerHTML = '';
 
-    // First person control state
-    const firstPersonRef = useRef({
-      position: new THREE.Vector3(0, 50, 300),
-      rotation: new THREE.Euler(0, 0, 0),
-      yaw: 0,
-      pitch: 0,
-      moveForward: false,
-      moveBackward: false,
-      moveLeft: false,
-      moveRight: false,
-      moveUp: false,
-      moveDown: false,
-      isLocked: false,
-      speed: 5
-    });
+        const scene = new THREE.Scene();
+        const bgColor = new THREE.Color(0x0a0e17);
+        scene.background = bgColor;
+        scene.fog = new THREE.FogExp2(0x0a0e17, 0.0006);
+        sceneRef.current = scene;
 
-    // Auto launch timer
-    const lastAutoLaunchRef = useRef<number>(0);
-    const fpsRef = useRef({ frames: 0, lastTime: 0, fps: 0 });
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+        camera.position.set(0, 150, 600);
+        cameraRef.current = camera;
 
-    // Charging state
-    const [isCharging, setIsCharging] = useState(false);
-    const chargeLevelRef = useRef(0);
-    const mousePos3DRef = useRef({ x: 0, y: 150, z: 0 });
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        renderer.toneMappingExposure = 1.8;
+        containerRef.current.appendChild(renderer.domElement);
+        rendererRef.current = renderer;
 
-    // Initialize scene
-    useEffect(() => {
-      if (!containerRef.current) return;
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.4, 0.1);
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene); composer.addPass(bloomPass);
 
-      // Scene
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x020205);
-      scene.fog = new THREE.Fog(0x020205, 500, 2500);
-      sceneRef.current = scene;
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.05;
+        controls.minDistance = 100; controls.maxDistance = 1500;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; controls.minPolarAngle = 0.2;
+        controls.autoRotate = autoRotateRef.current; controls.autoRotateSpeed = 0.8;
+        controlsRef.current = controls;
 
-      // Camera
-      const camera = new THREE.PerspectiveCamera(
-        60,
-        window.innerWidth / window.innerHeight,
-        1,
-        5000
-      );
-      camera.position.set(0, 200, 500);
-      camera.lookAt(0, 150, 0);
-      cameraRef.current = camera;
+        particlePoolRef.current = new ParticlePool3D(25000);
 
-      // Renderer
-      const renderer = new THREE.WebGLRenderer({
-        antialias: true,
-        alpha: false,
-        powerPreference: 'high-performance'
-      });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.5;
-      containerRef.current.appendChild(renderer.domElement);
-      rendererRef.current = renderer;
+        const particleGeometry = new THREE.BufferGeometry();
+        const maxParticles = 25000;
+        const positions = new Float32Array(maxParticles * 3);
+        const colors = new Float32Array(maxParticles * 3);
+        const sizes = new Float32Array(maxParticles);
+        for(let i=0; i<maxParticles * 3; i++) positions[i] = 0;
+        for(let i=1; i<maxParticles * 3; i+=3) positions[i] = -10000;
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        particleGeometryRef.current = particleGeometry;
 
-      // Initialize particle pool
-      particlePoolRef.current = new ParticlePool3D(20000);
+        const particleMaterial = new THREE.PointsMaterial({
+          size: 8, map: createSoftParticleTexture(), vertexColors: true,
+          transparent: true, opacity: 1, blending: THREE.AdditiveBlending,
+          depthWrite: false, sizeAttenuation: true
+        });
+        const particlePoints = new THREE.Points(particleGeometry, particleMaterial);
+        particlePoints.frustumCulled = false;
+        scene.add(particlePoints);
 
-      // Create particle geometry
-      const particleGeometry = new THREE.BufferGeometry();
-      const maxParticles = 20000;
-      const positions = new Float32Array(maxParticles * 3);
-      const colors = new Float32Array(maxParticles * 3);
-      const sizes = new Float32Array(maxParticles);
-      const alphas = new Float32Array(maxParticles);
+        createStars(scene); createGround(scene);
 
-      particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-      particleGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
-      particleGeometryRef.current = particleGeometry;
+        const handleResize = () => {
+          if (!cameraRef.current || !rendererRef.current) return;
+          const w = window.innerWidth, h = window.innerHeight;
+          cameraRef.current.aspect = w / h; cameraRef.current.updateProjectionMatrix();
+          rendererRef.current.setSize(w, h); composer.setSize(w, h);
+        };
+        window.addEventListener('resize', handleResize);
 
-      // Particle material with custom shader
-      const particleMaterial = new THREE.PointsMaterial({
-        size: 8,  // Increased for better visibility
-        vertexColors: true,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        sizeAttenuation: true
-      });
-      particleMaterialRef.current = particleMaterial;
+        const animate = () => {
+          requestRef.current = requestAnimationFrame(animate);
+          const timeController = timeControllerRef.current;
+          const currentSettings = settingsRef.current;
+          const currentConfig = configRef.current;
 
-      const particlePoints = new THREE.Points(particleGeometry, particleMaterial);
-      particlePoints.frustumCulled = false;
-      scene.add(particlePoints);
-      particlePointsRef.current = particlePoints;
-
-      // Create trail geometry for fireworks
-      const trailGeometry = new THREE.BufferGeometry();
-      const trailPositions = new Float32Array(1000 * 6); // 1000 segments, 2 points each
-      const trailColors = new Float32Array(1000 * 6);
-      trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
-      trailGeometry.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
-      trailGeometryRef.current = trailGeometry;
-
-      const trailMaterial = new THREE.LineBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-      trailMaterialRef.current = trailMaterial;
-
-      const trailLines = new THREE.LineSegments(trailGeometry, trailMaterial);
-      scene.add(trailLines);
-      trailLinesRef.current = trailLines;
-
-      // Create stars
-      createStars(scene);
-
-      // Create ground
-      createGround(scene);
-
-      // Add ambient light
-      const ambientLight = new THREE.AmbientLight(0x111122, 0.5);
-      scene.add(ambientLight);
-
-      console.log('🎆 3D Scene initialized successfully!');
-      console.log('📍 Camera at:', camera.position);
-      console.log('🌌 Scene children:', scene.children.length);
-
-      // Handle resize
-      const handleResize = () => {
-        if (!cameraRef.current || !rendererRef.current) return;
-        cameraRef.current.aspect = window.innerWidth / window.innerHeight;
-        cameraRef.current.updateProjectionMatrix();
-        rendererRef.current.setSize(window.innerWidth, window.innerHeight);
-      };
-      window.addEventListener('resize', handleResize);
-
-      // Keyboard controls
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (cameraModeRef.current === 'firstPerson') {
-          const fp = firstPersonRef.current;
-          switch (e.code) {
-            case 'KeyW': fp.moveForward = true; break;
-            case 'KeyS': fp.moveBackward = true; break;
-            case 'KeyA': fp.moveLeft = true; break;
-            case 'KeyD': fp.moveRight = true; break;
-            case 'Space': fp.moveUp = true; e.preventDefault(); break;
-            case 'ShiftLeft': fp.moveDown = true; break;
+          if (controlsRef.current) {
+            controlsRef.current.autoRotate = autoRotateRef.current;
+            controlsRef.current.update();
           }
-        }
-        // Time controls
-        switch (e.code) {
-          case 'KeyP': timeControllerRef.current.togglePause(); break;
-          case 'BracketLeft': timeControllerRef.current.slowDown(); break;
-          case 'BracketRight': timeControllerRef.current.speedUp(); break;
-          case 'Digit1': timeControllerRef.current.setSlowMotion(); break;
-          case 'Digit2': timeControllerRef.current.setNormal(); break;
-          case 'Digit3': timeControllerRef.current.setFast(); break;
-          case 'KeyC': 
-            const newMode = cameraModeRef.current === 'orbit' ? 'firstPerson' : 'orbit';
-            setCameraMode(newMode);
-            cameraModeRef.current = newMode;
-            break;
-        }
-      };
 
-      const handleKeyUp = (e: KeyboardEvent) => {
-        if (cameraModeRef.current === 'firstPerson') {
-          const fp = firstPersonRef.current;
-          switch (e.code) {
-            case 'KeyW': fp.moveForward = false; break;
-            case 'KeyS': fp.moveBackward = false; break;
-            case 'KeyA': fp.moveLeft = false; break;
-            case 'KeyD': fp.moveRight = false; break;
-            case 'Space': fp.moveUp = false; break;
-            case 'ShiftLeft': fp.moveDown = false; break;
+          if (!timeController.isPaused) {
+            timeController.update();
+            const deltaTime = timeController.deltaTime;
+            const virtualTime = timeController.virtualTime * 1000;
+
+            // 1. 基础自动发射 (Random single shots) - 如果开启了自动嘉年华，这里其实可以关掉，或者作为背景噪音
+            // 为了避免过于混乱，如果开启了嘉年华，这里降低频率
+            const delay = currentSettings.enableAutoCarnival ? currentSettings.autoLaunchDelay * 2 : currentSettings.autoLaunchDelay;
+            if (virtualTime - lastAutoLaunchRef.current > delay) {
+              // 使用嘉年华白名单配置
+              launchFireworkInternal(
+                  (Math.random() - 0.5) * 500, 180 + Math.random() * 120, (Math.random() - 0.5) * 500,
+                  undefined, undefined, currentSettings, currentConfig
+              );
+              lastAutoLaunchRef.current = virtualTime;
+            }
+
+            // 2. 嘉年华自动循环 (Auto Carnival Loop)
+            if (currentSettings.enableAutoCarnival) {
+              if (virtualTime - lastCarnivalRef.current > currentSettings.carnivalInterval * 1000) {
+                launchCarnivalWave(currentSettings, currentConfig);
+                lastCarnivalRef.current = virtualTime;
+              }
+            }
+
+            for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
+              const fw = fireworksRef.current[i];
+              fw.update(currentSettings, deltaTime);
+
+              if (!fw.exploded) {
+                const speed = fw.velocity.length();
+                const spawnProb = Math.min(1, speed / 15);
+                const alphaMod = Math.min(1, speed / 25);
+                const trailHue = fw.hue;
+
+                if (Math.random() < spawnProb) {
+                  if (fw.ascension === AscensionType.DRAWING) {
+                    particlePoolRef.current?.get({
+                      x: fw.position.x, y: fw.position.y, z: fw.position.z,
+                      hue: trailHue, speed: 0, size: 5, decay: 0.005, behavior: 'stationary', gravity: 0
+                    });
+                  }
+                  else if (fw.ascension === AscensionType.SPIRAL) {
+                    particlePoolRef.current?.get({
+                      x: fw.position.x, y: fw.position.y, z: fw.position.z,
+                      hue: trailHue, speed: 0, size: 4, decay: 0.08, behavior: 'glitter'
+                    });
+                  }
+                  else if (fw.ascension === AscensionType.ACCELERATE) {
+                    particlePoolRef.current?.get({
+                      x: fw.position.x + (Math.random()-0.5), y: fw.position.y - 1, z: fw.position.z + (Math.random()-0.5),
+                      hue: (trailHue + 30) % 360, speed: 0, size: 7, decay: 0.1, gravity: 0.01
+                    });
+                  }
+                  else {
+                    const p = particlePoolRef.current?.get({
+                      x: fw.position.x + (Math.random()-0.5) * 1.5, y: fw.position.y - 1, z: fw.position.z + (Math.random()-0.5) * 1.5,
+                      hue: trailHue, speed: 0, size: 5, decay: 0.08, behavior: 'default', gravity: 0.02
+                    });
+                    if (p) p.alpha = alphaMod;
+                  }
+                }
+              }
+
+              if (fw.exploded) {
+                fw.createExplosion(currentSettings, (opts) => particlePoolRef.current!.get(opts));
+                fireworksRef.current.splice(i, 1);
+              }
+            }
+            particlePoolRef.current?.update(deltaTime);
           }
-        }
-      };
 
-      window.addEventListener('keydown', handleKeyDown);
-      window.addEventListener('keyup', handleKeyUp);
+          updateParticleGeometry();
+          updateStars(performance.now() * 0.0005);
 
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('keyup', handleKeyUp);
-        if (requestRef.current) cancelAnimationFrame(requestRef.current);
-        renderer.dispose();
-        containerRef.current?.removeChild(renderer.domElement);
-      };
-    }, []);
+          fpsRef.current.frames++;
+          const now = performance.now();
+          if (now - fpsRef.current.lastTime >= 1000) {
+            fpsRef.current.fps = fpsRef.current.frames;
+            fpsRef.current.frames = 0;
+            fpsRef.current.lastTime = now;
+          }
+          composer.render();
 
-    // Create starfield
-    const createStars = (scene: THREE.Scene) => {
-      const starGeometry = new THREE.BufferGeometry();
-      const starCount = 2000;
-      const positions = new Float32Array(starCount * 3);
-      const colors = new Float32Array(starCount * 3);
-      const sizes = new Float32Array(starCount);
-
-      for (let i = 0; i < starCount; i++) {
-        const i3 = i * 3;
-        // Distribute stars in a large sphere
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = 1500 + Math.random() * 1000;
-
-        positions[i3] = r * Math.sin(phi) * Math.cos(theta);
-        positions[i3 + 1] = Math.abs(r * Math.cos(phi)); // Only upper hemisphere
-        positions[i3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-
-        // Slight color variation
-        const tint = 0.8 + Math.random() * 0.2;
-        colors[i3] = tint;
-        colors[i3 + 1] = tint;
-        colors[i3 + 2] = tint * (0.9 + Math.random() * 0.1);
-
-        sizes[i] = Math.random() * 2 + 0.5;
-      }
-
-      starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
-      const starMaterial = new THREE.PointsMaterial({
-        size: 2,
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.8,
-        sizeAttenuation: false
-      });
-
-      const stars = new THREE.Points(starGeometry, starMaterial);
-      scene.add(stars);
-      starsRef.current = stars;
-    };
-
-    // Create ground plane
-    const createGround = (scene: THREE.Scene) => {
-      // Grid helper
-      const gridHelper = new THREE.GridHelper(2000, 100, 0x0a1628, 0x061218);
-      gridHelper.position.y = 0;
-      scene.add(gridHelper);
-
-      // Ground plane with glow
-      const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
-      const groundMaterial = new THREE.MeshBasicMaterial({
-        color: 0x020208,
-        transparent: true,
-        opacity: 0.8
-      });
-      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.y = -1;
-      scene.add(ground);
-      groundRef.current = ground;
-
-      // Horizon glow
-      const horizonGeometry = new THREE.PlaneGeometry(3000, 500);
-      const horizonMaterial = new THREE.MeshBasicMaterial({
-        color: 0x1a1a3a,
-        transparent: true,
-        opacity: 0.3,
-        side: THREE.DoubleSide
-      });
-      const horizon = new THREE.Mesh(horizonGeometry, horizonMaterial);
-      horizon.position.set(0, 100, -1000);
-      scene.add(horizon);
-    };
-
-    // Launch firework
-    const launchFireworkAt = useCallback((x: number, y: number, z: number, hue?: number, charge?: number) => {
-      const startX = x + (Math.random() - 0.5) * 50;
-      const startZ = z + (Math.random() - 0.5) * 50;
-
-      fireworksRef.current.push(new Firework3D({
-        startX,
-        startZ,
-        targetX: x,
-        targetY: y,
-        targetZ: z,
-        hue: hue ?? Math.random() * 360,
-        charge: charge ?? 0.2 + Math.random() * 0.5
-      }, settings));
-    }, [settings]);
-
-    // Expose methods
-    useImperativeHandle(ref, () => ({
-      launchCarnival: () => {
-        const launchWave = (count: number, delay: number) => {
-          for (let i = 0; i < count; i++) {
-            setTimeout(() => {
-              const x = (Math.random() - 0.5) * 600;
-              const y = 150 + Math.random() * 200;
-              const z = (Math.random() - 0.5) * 600;
-              launchFireworkAt(x, y, z, Math.random() * 360, 0.4 + Math.random() * 0.4);
-            }, delay + i * 180);
+          if (onTimeUpdateRef.current) onTimeUpdateRef.current(timeController);
+          if (onStatsUpdateRef.current) {
+            onStatsUpdateRef.current({
+              particles: particlePoolRef.current?.activeCount ?? 0,
+              fireworks: fireworksRef.current.length,
+              fps: fpsRef.current.fps
+            });
           }
         };
-        launchWave(8, 0);
-        launchWave(12, 1200);
-        launchWave(10, 2400);
-      },
-      launchAt: launchFireworkAt,
-      getTimeController: () => timeControllerRef.current,
-      setCameraMode: (mode: CameraMode) => {
-        setCameraMode(mode);
-        cameraModeRef.current = mode;
-      }
-    }));
+        requestRef.current = requestAnimationFrame(animate);
 
-    // Mouse handlers
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-      if (cameraModeRef.current === 'orbit') {
-        if (e.button === 2 || e.button === 1) {
-          // Right or middle click - start orbit
-          orbitRef.current.isDragging = true;
-          orbitRef.current.lastMouseX = e.clientX;
-          orbitRef.current.lastMouseY = e.clientY;
-        } else if (e.button === 0) {
-          // Left click - start charging
-          setIsCharging(true);
-          chargeLevelRef.current = 0;
-        }
-      }
-    }, []);
+        return () => {
+          window.removeEventListener('resize', handleResize);
+          if (requestRef.current) cancelAnimationFrame(requestRef.current);
+          if (controlsRef.current) controlsRef.current.dispose();
+          if (rendererRef.current) {
+            rendererRef.current.dispose(); rendererRef.current.forceContextLoss();
+            if(containerRef.current && rendererRef.current.domElement && containerRef.current.contains(rendererRef.current.domElement)) containerRef.current.removeChild(rendererRef.current.domElement);
+          }
+        };
+      }, []);
 
-    const handleMouseUp = useCallback((e: React.MouseEvent) => {
-      if (orbitRef.current.isDragging) {
-        orbitRef.current.isDragging = false;
-      }
-      if (isCharging && e.button === 0) {
-        // Launch firework at calculated position
-        const { x, y, z } = mousePos3DRef.current;
-        launchFireworkAt(x, y, z, undefined, chargeLevelRef.current + 0.1);
-        setIsCharging(false);
-        chargeLevelRef.current = 0;
-      }
-    }, [isCharging, launchFireworkAt]);
-
-    const handleMouseMove = useCallback((e: React.MouseEvent) => {
-      if (cameraModeRef.current === 'orbit') {
-        if (orbitRef.current.isDragging) {
-          const deltaX = e.clientX - orbitRef.current.lastMouseX;
-          const deltaY = e.clientY - orbitRef.current.lastMouseY;
-          
-          orbitRef.current.theta -= deltaX * 0.005;
-          orbitRef.current.phi = Math.max(0.1, Math.min(Math.PI - 0.1, orbitRef.current.phi + deltaY * 0.005));
-          
-          orbitRef.current.lastMouseX = e.clientX;
-          orbitRef.current.lastMouseY = e.clientY;
-        }
-
-        // Calculate 3D position for firework launch
-        if (cameraRef.current) {
-          const rect = containerRef.current?.getBoundingClientRect();
-          if (rect) {
-            const mouse = new THREE.Vector2(
-              ((e.clientX - rect.left) / rect.width) * 2 - 1,
-              -((e.clientY - rect.top) / rect.height) * 2 + 1
+      // 内部: 发射嘉年华波次
+      const launchCarnivalWave = (settings: AppSettings, config: FireworkConfig) => {
+        const count = 5 + Math.floor(Math.random() * 5); // 5-10个
+        for(let i=0; i<count; i++) {
+          setTimeout(() => {
+            launchFireworkInternal(
+                (Math.random()-0.5)*800, 200+Math.random()*200, (Math.random()-0.5)*800,
+                undefined, undefined, settings, config
             );
-            
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(mouse, cameraRef.current);
-            
-            // Intersect with a plane at y = 150 (typical explosion height)
-            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -150);
-            const intersection = new THREE.Vector3();
-            raycaster.ray.intersectPlane(plane, intersection);
-            
-            if (intersection) {
-              mousePos3DRef.current = { x: intersection.x, y: 150, z: intersection.z };
+          }, i * 100);
+        }
+      };
+
+      // 内部: 发射单个烟花
+      const launchFireworkInternal = (
+          x: number, y: number, z: number,
+          hue?: number, charge?: number,
+          currentSettings?: AppSettings,
+          currentConfig?: FireworkConfig,
+          // 新增：强制指定类型 (用于单发配置)
+          forcedShape?: ExplosionType,
+          forcedColor?: ColorStyle
+      ) => {
+        const s = currentSettings || settingsRef.current;
+        const c = currentConfig || configRef.current;
+        const startX = (Math.random() - 0.5) * 400;
+        const startZ = (Math.random() - 0.5) * 400;
+
+        // 如果有强制配置，创建一个临时 Config
+        let activeConfig = c;
+        if (forcedShape || forcedColor) {
+          activeConfig = {
+            ...c,
+            enabledShapes: forcedShape ? [forcedShape] : c.enabledShapes,
+            enabledColors: forcedColor ? [forcedColor] : c.enabledColors
+          };
+        }
+
+        fireworksRef.current.push(new Firework3D({
+          startX, startZ, targetX: x, targetY: y, targetZ: z,
+          hue: hue ?? Math.random() * 360,
+          charge: charge ?? 0.4 + Math.random() * 0.6
+        }, s, activeConfig));
+      };
+
+      const createStars = (scene: THREE.Scene) => {
+        const geo = new THREE.BufferGeometry();
+        const count = 3000;
+        const pos = new Float32Array(count * 3); const col = new Float32Array(count * 3); const sz = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+          const r = 2000 + Math.random() * 3000;
+          const theta = Math.random() * 6.28; const phi = Math.acos(2 * Math.random() - 1);
+          pos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+          pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+          pos[i*3+2] = r * Math.cos(phi);
+          col[i*3] = 0.8; col[i*3+1] = 0.9; col[i*3+2] = 1.0;
+          sz[i] = Math.random() * 2;
+        }
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        geo.setAttribute('size', new THREE.BufferAttribute(sz, 1));
+        scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size: 3, vertexColors: true, transparent: true, opacity: 0.6, sizeAttenuation: false })));
+        starsRef.current = scene.children[scene.children.length-1] as THREE.Points;
+      };
+
+      const createGround = (scene: THREE.Scene) => {
+        const grid = new THREE.GridHelper(6000, 60, 0x334455, 0x111e2f);
+        (grid.material as THREE.Material).transparent = true; (grid.material as THREE.Material).opacity = 0.15;
+        grid.position.y = -5; scene.add(grid);
+      };
+
+      const updateParticleGeometry = () => {
+        if (!particleGeometryRef.current || !particlePoolRef.current) return;
+        const particles = particlePoolRef.current.getActiveParticles();
+        const pos = particleGeometryRef.current.attributes.position.array as Float32Array;
+        const col = particleGeometryRef.current.attributes.color.array as Float32Array;
+        const sz = particleGeometryRef.current.attributes.size.array as Float32Array;
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i]; const i3 = i * 3;
+          pos[i3] = p.position.x; pos[i3+1] = p.position.y; pos[i3+2] = p.position.z;
+          const c = p.getColor();
+          col[i3] = c.r * p.alpha; col[i3+1] = c.g * p.alpha; col[i3+2] = c.b * p.alpha;
+          sz[i] = p.size * (p.behavior === 'glitter' && p.twinkleFactor > 0.5 ? 0.3 : 1);
+        }
+        for (let i = particles.length; i < 25000; i++) {
+          if (pos[i*3+1] > -5000) { pos[i*3] = 0; pos[i*3+1] = -10000; pos[i*3+2] = 0; sz[i] = 0; }
+          else if (i > particles.length + 500) break;
+        }
+        particleGeometryRef.current.attributes.position.needsUpdate = true;
+        particleGeometryRef.current.attributes.color.needsUpdate = true;
+        particleGeometryRef.current.attributes.size.needsUpdate = true;
+      };
+
+      const updateStars = (time: number) => {
+        if (!starsRef.current) return;
+        const colors = starsRef.current.geometry.attributes.color.array as Float32Array;
+        for(let i=0; i<colors.length; i+=3) {
+          const f = 0.8 + 0.2 * Math.sin(time + i);
+          colors[i] = 0.8 * f; colors[i+1] = 0.9 * f; colors[i+2] = 1.0 * f;
+        }
+        starsRef.current.geometry.attributes.color.needsUpdate = true;
+      };
+
+      useImperativeHandle(ref, () => ({
+        launchCarnival: () => launchCarnivalWave(settingsRef.current, configRef.current),
+        launchAt: (x, y, z) => launchFireworkInternal(x, y, z),
+        getTimeController: () => timeControllerRef.current,
+        setCameraMode: () => {}
+      }));
+
+      const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button === 0) {
+          mouseDownPos.current = { x: e.clientX, y: e.clientY };
+          mouseDownTime.current = performance.now();
+        }
+      };
+
+      const handleMouseUp = (e: React.MouseEvent) => {
+        if (e.button === 0 && cameraRef.current) {
+          const dist = Math.sqrt(Math.pow(e.clientX - mouseDownPos.current.x, 2) + Math.pow(e.clientY - mouseDownPos.current.y, 2));
+          if (dist < 5 && performance.now() - mouseDownTime.current < 300) {
+            const rect = containerRef.current?.getBoundingClientRect(); if (!rect) return;
+            const mouse = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+            raycasterRef.current.setFromCamera(mouse, cameraRef.current);
+            const target = new THREE.Vector3();
+            raycasterRef.current.ray.intersectPlane(planeRef.current, target);
+            if (target) {
+              // 读取单发配置
+              const mConf = manualConfigRef.current;
+              const shape = mConf.lockedShape === 'RANDOM' ? undefined : mConf.lockedShape;
+              const color = mConf.lockedColor === 'RANDOM' ? undefined : mConf.lockedColor;
+
+              launchFireworkInternal(
+                  target.x, 200, target.z,
+                  undefined, 0.8,
+                  settingsRef.current, configRef.current,
+                  shape, color // 传入强制类型
+              );
             }
           }
         }
-      } else if (cameraModeRef.current === 'firstPerson' && firstPersonRef.current.isLocked) {
-        firstPersonRef.current.yaw -= e.movementX * 0.002;
-        firstPersonRef.current.pitch = Math.max(
-          -Math.PI / 2 + 0.1,
-          Math.min(Math.PI / 2 - 0.1, firstPersonRef.current.pitch - e.movementY * 0.002)
-        );
-      }
-    }, []);
-
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-      if (cameraModeRef.current === 'orbit') {
-        orbitRef.current.distance = Math.max(100, Math.min(2000, orbitRef.current.distance + e.deltaY * 0.5));
-      } else {
-        firstPersonRef.current.speed = Math.max(1, Math.min(20, firstPersonRef.current.speed - e.deltaY * 0.01));
-      }
-    }, []);
-
-    const handleClick = useCallback((e: React.MouseEvent) => {
-      if (cameraModeRef.current === 'firstPerson') {
-        containerRef.current?.requestPointerLock();
-        firstPersonRef.current.isLocked = true;
-      }
-    }, []);
-
-    const handleContextMenu = useCallback((e: React.MouseEvent) => {
-      e.preventDefault();
-    }, []);
-
-    // Animation loop
-    useEffect(() => {
-      const animate = () => {
-        requestRef.current = requestAnimationFrame(animate);
-
-        const timeController = timeControllerRef.current;
-        timeController.update();
-        const deltaTime = timeController.deltaTime;
-
-        // Update FPS
-        fpsRef.current.frames++;
-        const now = performance.now();
-        if (now - fpsRef.current.lastTime >= 1000) {
-          fpsRef.current.fps = fpsRef.current.frames;
-          fpsRef.current.frames = 0;
-          fpsRef.current.lastTime = now;
-        }
-
-        if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
-
-        // Update camera
-        updateCamera(deltaTime);
-
-        // Auto launch
-        if (!timeController.isPaused) {
-          const virtualTime = timeController.virtualTime * 1000;
-          if (virtualTime - lastAutoLaunchRef.current > settings.autoLaunchDelay) {
-            const x = (Math.random() - 0.5) * 400;
-            const y = 100 + Math.random() * 200;
-            const z = (Math.random() - 0.5) * 400;
-            launchFireworkAt(x, y, z);
-            lastAutoLaunchRef.current = virtualTime;
-          }
-        }
-
-        // Update charging
-        if (isCharging) {
-          chargeLevelRef.current = Math.min(1, chargeLevelRef.current + 0.02 * (1 - chargeLevelRef.current * 0.4));
-        }
-
-        // Update fireworks
-        for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
-          const fw = fireworksRef.current[i];
-          fw.update(settings, deltaTime);
-
-          if (fw.exploded) {
-            fw.createExplosion(settings, (opts) => particlePoolRef.current!.get(opts));
-            fireworksRef.current.splice(i, 1);
-          }
-        }
-
-        // Update particles
-        particlePoolRef.current?.update(deltaTime);
-
-        // Update particle geometry
-        updateParticleGeometry();
-
-        // Update firework trail geometry
-        updateTrailGeometry();
-
-        // Update stars twinkling
-        updateStars(timeController.virtualTime);
-
-        // Render
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
-
-        // Callbacks
-        if (onTimeUpdate) onTimeUpdate(timeController);
-        if (onStatsUpdate) {
-          onStatsUpdate({
-            particles: particlePoolRef.current?.activeCount ?? 0,
-            fireworks: fireworksRef.current.length,
-            fps: fpsRef.current.fps
-          });
-        }
       };
 
-      requestRef.current = requestAnimationFrame(animate);
-      return () => {
-        if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      };
-    }, [settings, isCharging, launchFireworkAt, onTimeUpdate, onStatsUpdate]);
-
-    // Update camera position
-    const updateCamera = (deltaTime: number) => {
-      if (!cameraRef.current) return;
-
-      if (cameraModeRef.current === 'orbit') {
-        const orbit = orbitRef.current;
-        cameraRef.current.position.set(
-          orbit.target.x + orbit.distance * Math.sin(orbit.phi) * Math.cos(orbit.theta),
-          orbit.target.y + orbit.distance * Math.cos(orbit.phi),
-          orbit.target.z + orbit.distance * Math.sin(orbit.phi) * Math.sin(orbit.theta)
-        );
-        cameraRef.current.lookAt(orbit.target);
-      } else {
-        const fp = firstPersonRef.current;
-        const speed = fp.speed * deltaTime * 60;
-        
-        // Calculate movement direction
-        const direction = new THREE.Vector3();
-        const forward = new THREE.Vector3(
-          Math.sin(fp.yaw),
-          0,
-          Math.cos(fp.yaw)
-        );
-        const right = new THREE.Vector3(
-          Math.cos(fp.yaw),
-          0,
-          -Math.sin(fp.yaw)
-        );
-
-        if (fp.moveForward) direction.add(forward);
-        if (fp.moveBackward) direction.sub(forward);
-        if (fp.moveRight) direction.add(right);
-        if (fp.moveLeft) direction.sub(right);
-        if (fp.moveUp) direction.y += 1;
-        if (fp.moveDown) direction.y -= 1;
-
-        direction.normalize().multiplyScalar(speed);
-        fp.position.add(direction);
-
-        // Keep above ground
-        fp.position.y = Math.max(10, fp.position.y);
-
-        cameraRef.current.position.copy(fp.position);
-        cameraRef.current.rotation.set(fp.pitch, fp.yaw, 0, 'YXZ');
-      }
-    };
-
-    // Update particle buffer geometry
-    const updateParticleGeometry = () => {
-      if (!particleGeometryRef.current || !particlePoolRef.current) return;
-
-      const particles = particlePoolRef.current.getActiveParticles();
-      const positions = particleGeometryRef.current.attributes.position.array as Float32Array;
-      const colors = particleGeometryRef.current.attributes.color.array as Float32Array;
-      const sizes = particleGeometryRef.current.attributes.size.array as Float32Array;
-
-      for (let i = 0; i < particles.length && i < 20000; i++) {
-        const p = particles[i];
-        const i3 = i * 3;
-
-        positions[i3] = p.position.x;
-        positions[i3 + 1] = p.position.y;
-        positions[i3 + 2] = p.position.z;
-
-        const color = p.getColor();
-        colors[i3] = color.r * p.alpha;
-        colors[i3 + 1] = color.g * p.alpha;
-        colors[i3 + 2] = color.b * p.alpha;
-
-        let size = p.size * (p.behavior === 'glitter' && p.twinkleFactor > 0.5 ? 0.3 : 1);
-        sizes[i] = size;
-      }
-
-      // Zero out unused particles
-      for (let i = particles.length; i < 20000; i++) {
-        const i3 = i * 3;
-        positions[i3] = 0;
-        positions[i3 + 1] = -1000;
-        positions[i3 + 2] = 0;
-        colors[i3] = 0;
-        colors[i3 + 1] = 0;
-        colors[i3 + 2] = 0;
-        sizes[i] = 0;
-      }
-
-      particleGeometryRef.current.attributes.position.needsUpdate = true;
-      particleGeometryRef.current.attributes.color.needsUpdate = true;
-      particleGeometryRef.current.attributes.size.needsUpdate = true;
-    };
-
-    // Update firework trails
-    const updateTrailGeometry = () => {
-      if (!trailGeometryRef.current) return;
-
-      const positions = trailGeometryRef.current.attributes.position.array as Float32Array;
-      const colors = trailGeometryRef.current.attributes.color.array as Float32Array;
-
-      let segmentIndex = 0;
-
-      for (const fw of fireworksRef.current) {
-        const fwColor = fw.getColor();
-
-        for (let i = 1; i < fw.trail.length && segmentIndex < 1000; i++) {
-          const i6 = segmentIndex * 6;
-          const prev = fw.trail[i - 1];
-          const curr = fw.trail[i];
-
-          const alpha = i / fw.trail.length;
-
-          positions[i6] = prev.x;
-          positions[i6 + 1] = prev.y;
-          positions[i6 + 2] = prev.z;
-          positions[i6 + 3] = curr.x;
-          positions[i6 + 4] = curr.y;
-          positions[i6 + 5] = curr.z;
-
-          colors[i6] = fwColor.r * alpha * 0.5;
-          colors[i6 + 1] = fwColor.g * alpha * 0.5;
-          colors[i6 + 2] = fwColor.b * alpha * 0.5;
-          colors[i6 + 3] = fwColor.r * alpha;
-          colors[i6 + 4] = fwColor.g * alpha;
-          colors[i6 + 5] = fwColor.b * alpha;
-
-          segmentIndex++;
-        }
-      }
-
-      // Zero out unused segments
-      for (let i = segmentIndex; i < 1000; i++) {
-        const i6 = i * 6;
-        for (let j = 0; j < 6; j++) {
-          positions[i6 + j] = 0;
-          colors[i6 + j] = 0;
-        }
-      }
-
-      trailGeometryRef.current.attributes.position.needsUpdate = true;
-      trailGeometryRef.current.attributes.color.needsUpdate = true;
-    };
-
-    // Update stars twinkling
-    const updateStars = (time: number) => {
-      if (!starsRef.current) return;
-
-      const geometry = starsRef.current.geometry;
-      const colors = geometry.attributes.color.array as Float32Array;
-
-      for (let i = 0; i < colors.length / 3; i++) {
-        const i3 = i * 3;
-        const twinkle = 0.5 + Math.sin(time * (0.5 + i * 0.001) + i) * 0.5;
-        const base = 0.6 + twinkle * 0.4;
-        colors[i3] = base;
-        colors[i3 + 1] = base;
-        colors[i3 + 2] = base * 0.95;
-      }
-
-      geometry.attributes.color.needsUpdate = true;
-    };
-
-    return (
-      <div
-        ref={containerRef}
-        className="w-full h-full cursor-crosshair"
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseMove={handleMouseMove}
-        onWheel={handleWheel}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-      />
-    );
-  }
+      return (
+          <div
+              ref={containerRef}
+              className="w-full h-full block cursor-pointer outline-none"
+              onMouseDown={handleMouseDown} onMouseUp={handleMouseUp}
+              title="Left Click: Launch | Drag: Rotate"
+          />
+      );
+    }
 );
 
+// END OF FILE: src/components/FireworkScene3D.tsx
 
 // =============================================================================
 // FILE: src\components\ui\HUD.tsx
@@ -1325,348 +1005,453 @@ export const HUD: React.FC = () => {
 // FILE: src\components\ui\HUD3D.tsx
 // =============================================================================
 
+// FILE: src/components/ui/HUD3D.tsx
+
 import React from 'react';
 
-interface HUD3DProps {
-  is3D?: boolean;
-}
-
-export const HUD3D: React.FC<HUD3DProps> = ({ is3D = true }) => {
-  return (
-    <>
-      {/* 头部信息 */}
-      <div className="absolute top-10 left-10 z-10 pointer-events-none">
-        <div className="flex items-center gap-4 mb-2">
-          <div className="w-1.5 h-12 bg-gradient-to-b from-cyan-400 via-purple-500 to-pink-500 rounded-full shadow-[0_0_20px_rgba(168,85,247,0.8)] animate-pulse"></div>
-          <div>
-            <h1 className="text-5xl font-black tracking-tighter italic leading-none">
-              璀璨<span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">星辰</span> 
-              <span className="text-2xl ml-2 text-purple-400">3D</span>
-            </h1>
-            <p className="text-[10px] text-cyan-500/50 tracking-[0.5em] font-bold uppercase mt-1">
-              3D Deep Space • Immersive Experience • Time Control
-            </p>
-          </div>
-        </div>
-        
-        {/* 3D Badge */}
-        {is3D && (
-          <div className="mt-4 flex items-center gap-2">
-            <div className="px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-pink-600/30 rounded-lg border border-purple-500/30 backdrop-blur-sm">
-              <span className="text-[10px] font-bold text-purple-300 tracking-wider">🌌 三维宇宙模式</span>
+export const HUD3D: React.FC = () => {
+    return (
+        <>
+            {/* 头部信息 - 浅色极简风格 */}
+            <div className="absolute top-8 left-8 z-10 pointer-events-none select-none">
+                <div className="flex items-center gap-4">
+                    <div className="w-1.5 h-12 bg-gradient-to-b from-gray-800 to-gray-400 rounded-full"></div>
+                    <div>
+                        <h1 className="text-4xl font-black tracking-tight text-gray-800">
+                            Celestial <span className="text-gray-400 font-light">Fireworks</span>
+                        </h1>
+                        <p className="text-[10px] text-gray-500 tracking-[0.4em] font-medium uppercase mt-1">
+                            Interactive 3D Simulation
+                        </p>
+                    </div>
+                </div>
             </div>
-            <div className="px-3 py-1.5 bg-cyan-600/20 rounded-lg border border-cyan-500/30 backdrop-blur-sm">
-              <span className="text-[10px] font-bold text-cyan-300 tracking-wider">⏱ 时间可控</span>
+
+            {/* 右下互动提示 - 卡片式设计 */}
+            <div className="absolute bottom-8 right-8 pointer-events-none">
+                <div className="bg-white/80 backdrop-blur-md p-5 rounded-2xl shadow-lg border border-white/50 text-gray-600">
+                    <p className="text-gray-900 font-bold text-xs mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                        CONTROL GUIDE
+                    </p>
+                    <div className="space-y-1.5 text-[10px] font-medium tracking-wide">
+                        <div className="flex justify-between w-40">
+                            <span>Rotate View</span>
+                            <span className="font-bold bg-gray-200 px-1.5 rounded text-gray-700">LMB / Drag</span>
+                        </div>
+                        <div className="flex justify-between w-40">
+                            <span>Launch</span>
+                            <span className="font-bold bg-gray-200 px-1.5 rounded text-gray-700">Click Ground</span>
+                        </div>
+                        <div className="flex justify-between w-40">
+                            <span>Zoom</span>
+                            <span className="font-bold bg-gray-200 px-1.5 rounded text-gray-700">Scroll</span>
+                        </div>
+                        <div className="flex justify-between w-40 mt-2 pt-2 border-t border-gray-200">
+                            <span>Pause / Play</span>
+                            <span className="font-bold bg-gray-200 px-1.5 rounded text-gray-700">P</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* 右下互动提示 */}
-      <div className="absolute bottom-10 right-10 text-[9px] text-white/30 tracking-[0.15em] font-medium pointer-events-none space-y-1 text-right">
-        <p className="text-cyan-400/50 font-bold mb-2">🎮 控制指南</p>
-        <p>• 左键点击/长按蓄力发射</p>
-        <p>• 右键拖动旋转视角</p>
-        <p>• 滚轮缩放距离</p>
-        <p>• C 切换第一人称</p>
-        <p className="mt-2 text-amber-400/50">⏱ 时间控制</p>
-        <p>• P 暂停/继续</p>
-        <p>• [ ] 减速/加速</p>
-        <p>• 1/2/3 速度预设</p>
-      </div>
-
-      {/* 底部浮标 */}
-      <footer className="absolute bottom-10 left-1/2 -translate-x-1/2 flex justify-center items-center gap-12 pointer-events-none opacity-20">
-        <div className="h-[1px] w-40 bg-gradient-to-r from-transparent via-purple-400/40 to-transparent"></div>
-        <div className="text-[10px] text-white uppercase tracking-[1em] font-light flex gap-8">
-          <span>心形</span><span>星芒</span><span>螺旋</span><span>星系</span><span>彗星</span><span>垂柳</span>
-        </div>
-        <div className="h-[1px] w-40 bg-gradient-to-l from-transparent via-purple-400/40 to-transparent"></div>
-      </footer>
-
-      {/* 渐变遮罩 */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-purple-950/20 via-transparent to-transparent"></div>
-        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/30 via-transparent to-transparent"></div>
-      </div>
-    </>
-  );
+            {/* 底部装饰线 */}
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent opacity-50 pointer-events-none"></div>
+        </>
+    );
 };
 
+// END OF FILE: src/components/ui/HUD3D.tsx
 
 // =============================================================================
 // FILE: src\components\ui\SettingsPanel.tsx
 // =============================================================================
 
+// FILE: src/components/ui/SettingsPanel.tsx
 
-import React from 'react';
-import { AppSettings, DEFAULT_SETTINGS } from '../../types';
+import React, { useState } from 'react';
+import { AppSettings, FireworkConfig, ManualConfig, ExplosionType, AscensionType, ColorStyle, SHAPE_ICONS, COLOR_ICONS, ASCENSION_ICONS } from '../../types';
 
 interface SettingsPanelProps {
-  show: boolean;
-  settings: AppSettings;
-  onClose: () => void;
-  onUpdate: (key: keyof AppSettings, value: number) => void;
-  onRandomize: () => void;
-  onReset: () => void;
+    show: boolean;
+    settings: AppSettings;
+    config: FireworkConfig;
+    manualConfig: ManualConfig;
+    onClose: () => void;
+    onUpdate: (key: keyof AppSettings, value: number | boolean) => void;
+    onUpdateConfig: (config: FireworkConfig) => void;
+    onUpdateManual: (config: ManualConfig) => void;
+    onRandomize: () => void;
+    onReset: () => void;
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
-  show, settings, onClose, onUpdate, onRandomize, onReset 
-}) => {
-  return (
-    <div className={`absolute top-0 right-0 h-full w-96 bg-[#030307]/95 backdrop-blur-3xl border-l border-white/5 z-40 transform transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${show ? 'translate-x-0' : 'translate-x-full shadow-none'}`}>
-      <div className="p-12 h-full flex flex-col gap-10 overflow-y-auto custom-scrollbar">
-        <div className="flex justify-between items-center border-b border-white/5 pb-8">
-          <div>
-            <h2 className="text-2xl font-black tracking-widest text-white">参数中枢</h2>
-            <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">Engine Kernel Controllers</p>
-          </div>
-          <button onClick={onClose} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-rose-500/20 hover:text-rose-400 transition-all group">
-            <span className="text-xl group-hover:scale-125 transition-transform">✕</span>
-          </button>
-        </div>
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({
+                                                                show, settings, config, manualConfig, onClose, onUpdate, onUpdateConfig, onUpdateManual, onRandomize, onReset
+                                                            }) => {
+    const [activeTab, setActiveTab] = useState<'carnival' | 'manual' | 'physics'>('carnival');
 
-        <div className="space-y-10">
-          <SettingSlider label="时空引力" value={settings.gravity} min={0.01} max={0.3} step={0.01} onChange={v => onUpdate('gravity', v)} desc="重力场强度，决定下坠快慢" />
-          <SettingSlider label="空气粘度" value={settings.friction} min={0.85} max={0.99} step={0.01} onChange={v => onUpdate('friction', v)} desc="介质阻力，影响扩散惯性" />
-          <SettingSlider label="巡航频率" value={settings.autoLaunchDelay} min={500} max={10000} step={100} onChange={v => onUpdate('autoLaunchDelay', v)} unit="ms" desc="静默状态下的自动发射间隔" />
-          <SettingSlider label="粒子集群密度" value={settings.particleCountMultiplier} min={0.2} max={4.0} step={0.1} onChange={v => onUpdate('particleCountMultiplier', v)} desc="爆炸核心生成的碎片总数" />
-          <SettingSlider label="时空曲率(规模)" value={settings.explosionSizeMultiplier} min={0.2} max={4.0} step={0.1} onChange={v => onUpdate('explosionSizeMultiplier', v)} desc="单次爆炸覆盖的物理半径" />
-          <SettingSlider label="远星跃迁频率" value={settings.starBlinkSpeed} min={0.0001} max={0.005} step={0.0001} onChange={v => onUpdate('starBlinkSpeed', v)} desc="星空闪烁的量子律动速度" />
-          <SettingSlider label="升空轨迹长度" value={settings.trailLength} min={2} max={60} step={1} onChange={v => onUpdate('trailLength', v)} desc="火箭拖尾的视觉残影长度" />
-        </div>
+    // --- Helpers for Whitelist (Carnival) ---
+    const toggleShape = (shape: ExplosionType) => {
+        const newShapes = config.enabledShapes.includes(shape)
+            ? config.enabledShapes.filter(s => s !== shape)
+            : [...config.enabledShapes, shape];
+        if (newShapes.length === 0) return; // Prevent empty
+        onUpdateConfig({ ...config, enabledShapes: newShapes });
+    };
 
-        <div className="mt-auto flex flex-col gap-4 pt-10 border-t border-white/5">
-          <button 
-            onClick={onRandomize}
-            className="w-full py-5 bg-cyan-500 text-black rounded-2xl text-xs font-black uppercase tracking-[0.4em] transition-all hover:bg-cyan-400 hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] active:scale-95"
-          >
-            🎲 随机演化参数
-          </button>
-          <button 
-            onClick={() => {
-              if(confirm('确定要重置为实验室推荐参数吗？')) onReset();
-            }}
-            className="w-full py-4 hover:bg-white/5 text-white/20 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all border border-transparent hover:border-white/5"
-          >
-            重置为推荐值
-          </button>
+    const toggleAscension = (type: AscensionType) => {
+        const newTypes = config.enabledAscensions.includes(type)
+            ? config.enabledAscensions.filter(t => t !== type)
+            : [...config.enabledAscensions, type];
+        if (newTypes.length === 0) return;
+        onUpdateConfig({ ...config, enabledAscensions: newTypes });
+    };
+
+    const toggleColor = (style: ColorStyle) => {
+        const newStyles = config.enabledColors.includes(style)
+            ? config.enabledColors.filter(s => s !== style)
+            : [...config.enabledColors, style];
+        if (newStyles.length === 0) return;
+        onUpdateConfig({ ...config, enabledColors: newStyles });
+    };
+
+    const toggleAll = (type: 'shapes' | 'colors' | 'ascensions', enable: boolean) => {
+        const update = { ...config };
+        if (type === 'shapes') update.enabledShapes = enable ? Object.values(ExplosionType) : [ExplosionType.SPHERE];
+        if (type === 'colors') update.enabledColors = enable ? Object.values(ColorStyle) : [ColorStyle.SINGLE];
+        if (type === 'ascensions') update.enabledAscensions = enable ? Object.values(AscensionType) : [AscensionType.LINEAR];
+        onUpdateConfig(update);
+    };
+
+    return (
+        <div className={`absolute top-0 right-0 h-full w-[420px] bg-white/95 backdrop-blur-3xl shadow-2xl z-40 transform transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] border-l border-gray-200 flex flex-col ${show ? 'translate-x-0' : 'translate-x-full'}`}>
+
+            {/* Header */}
+            <div className="p-6 pb-2 border-b border-gray-100 bg-white/50">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 className="text-2xl font-black tracking-tighter text-gray-800">
+                            <span className="text-blue-600">FIREWORK</span> EDITOR
+                        </h2>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-1">Professional Control Suite</p>
+                    </div>
+                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors">
+                        ✕
+                    </button>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex p-1 bg-gray-100 rounded-xl mb-2">
+                    {[
+                        { id: 'carnival', icon: '🎡', label: '嘉年华' },
+                        { id: 'manual', icon: '👆', label: '单发配置' },
+                        { id: 'physics', icon: '⚙️', label: '物理引擎' }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                                activeTab === tab.id
+                                    ? 'bg-white shadow-sm text-blue-600 ring-1 ring-black/5'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                            }`}
+                        >
+                            <span className="text-sm">{tab.icon}</span> {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+
+                {/* === Tab 1: Carnival === */}
+                {activeTab === 'carnival' && (
+                    <div className="space-y-8 animate-fadeIn">
+                        {/* Auto Control */}
+                        <section className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xs font-black text-blue-800 uppercase tracking-widest flex items-center gap-2">
+                                    <span>🤖</span> 自动巡演控制
+                                </h3>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" className="sr-only peer" checked={settings.enableAutoCarnival} onChange={e => onUpdate('enableAutoCarnival', e.target.checked)} />
+                                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <SettingSlider label="每波间隔 (秒)" value={settings.carnivalInterval} min={1} max={10} step={0.5} onChange={v => onUpdate('carnivalInterval', v)} />
+                        </section>
+
+                        {/* Whitelist: Shapes */}
+                        <section>
+                            <SectionHeader title="形状池 (Whitelist)" onAll={() => toggleAll('shapes', true)} onNone={() => toggleAll('shapes', false)} />
+                            <div className="grid grid-cols-4 gap-2">
+                                {Object.values(ExplosionType).map(t => (
+                                    <VisualToggle key={t} label={t} icon={SHAPE_ICONS[t]} active={config.enabledShapes.includes(t)} onClick={() => toggleShape(t)} />
+                                ))}
+                            </div>
+                        </section>
+
+                        {/* Whitelist: Colors */}
+                        <section>
+                            <SectionHeader title="色彩风格" onAll={() => toggleAll('colors', true)} onNone={() => toggleAll('colors', false)} />
+                            <div className="grid grid-cols-3 gap-2">
+                                {Object.values(ColorStyle).map(t => (
+                                    <VisualToggle key={t} label={t} icon={COLOR_ICONS[t]} active={config.enabledColors.includes(t)} onClick={() => toggleColor(t)} />
+                                ))}
+                            </div>
+                        </section>
+
+                        {/* Whitelist: Ascension */}
+                        <section>
+                            <SectionHeader title="升空轨迹" onAll={() => toggleAll('ascensions', true)} onNone={() => toggleAll('ascensions', false)} />
+                            <div className="grid grid-cols-3 gap-2">
+                                {Object.values(AscensionType).map(t => (
+                                    <VisualToggle key={t} label={t} icon={ASCENSION_ICONS[t]} active={config.enabledAscensions.includes(t)} onClick={() => toggleAscension(t)} />
+                                ))}
+                            </div>
+                        </section>
+                    </div>
+                )}
+
+                {/* === Tab 2: Manual === */}
+                {activeTab === 'manual' && (
+                    <div className="space-y-6 animate-fadeIn">
+                        <div className="bg-gray-50 p-4 rounded-xl text-gray-500 text-[10px] leading-relaxed mb-4">
+                            在此配置<b>鼠标点击</b>发射的烟花样式。选择 "随机" 则会从嘉年华的白名单中随机抽取。
+                        </div>
+
+                        <section>
+                            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">锁定形状 (Click Shape)</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                <VisualToggle
+                                    label="随机 (Random)" icon="🎲"
+                                    active={manualConfig.lockedShape === 'RANDOM'}
+                                    onClick={() => onUpdateManual({ ...manualConfig, lockedShape: 'RANDOM' })}
+                                    primary
+                                />
+                                {Object.values(ExplosionType).map(t => (
+                                    <VisualToggle
+                                        key={t} label={t} icon={SHAPE_ICONS[t]}
+                                        active={manualConfig.lockedShape === t}
+                                        onClick={() => onUpdateManual({ ...manualConfig, lockedShape: t })}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+
+                        <section>
+                            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">锁定颜色 (Click Color)</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                <VisualToggle
+                                    label="随机 (Random)" icon="🎲"
+                                    active={manualConfig.lockedColor === 'RANDOM'}
+                                    onClick={() => onUpdateManual({ ...manualConfig, lockedColor: 'RANDOM' })}
+                                    primary
+                                />
+                                {Object.values(ColorStyle).map(t => (
+                                    <VisualToggle
+                                        key={t} label={t} icon={COLOR_ICONS[t]}
+                                        active={manualConfig.lockedColor === t}
+                                        onClick={() => onUpdateManual({ ...manualConfig, lockedColor: t })}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    </div>
+                )}
+
+                {/* === Tab 3: Physics === */}
+                {activeTab === 'physics' && (
+                    <div className="space-y-8 animate-fadeIn">
+                        <SettingSlider label="Gravity (引力)" value={settings.gravity} min={0.01} max={0.3} step={0.01} onChange={v => onUpdate('gravity', v)} />
+                        <SettingSlider label="Air Friction (阻力)" value={settings.friction} min={0.85} max={0.99} step={0.01} onChange={v => onUpdate('friction', v)} />
+                        <SettingSlider label="Launch Interval (随机微调)" value={settings.autoLaunchDelay} min={200} max={3000} step={100} unit="ms" onChange={v => onUpdate('autoLaunchDelay', v)} />
+                        <SettingSlider label="Density (粒子密度)" value={settings.particleCountMultiplier} min={0.5} max={2.0} step={0.1} onChange={v => onUpdate('particleCountMultiplier', v)} />
+                        <SettingSlider label="Explosion Size (范围)" value={settings.explosionSizeMultiplier} min={0.5} max={2.0} step={0.1} onChange={v => onUpdate('explosionSizeMultiplier', v)} />
+                        <SettingSlider label="Trail Length (尾迹)" value={settings.trailLength} min={2} max={30} step={1} onChange={v => onUpdate('trailLength', v)} />
+                    </div>
+                )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+                <div className="flex gap-3">
+                    <button
+                        onClick={onRandomize}
+                        className="flex-1 py-3 bg-gray-800 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-700 active:scale-95 transition-all shadow-lg shadow-gray-300"
+                    >
+                        🎲 Randomize
+                    </button>
+                    <button
+                        onClick={onReset}
+                        className="flex-1 py-3 text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-bold uppercase tracking-widest transition-all"
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
-const SettingSlider = ({ label, value, min, max, step, unit = '', onChange, desc }: { label: string, value: number, min: number, max: number, step: number, unit?: string, onChange: (v: number) => void, desc?: string }) => (
-  <div className="space-y-4 group">
-    <div className="flex justify-between items-end">
-      <div className="space-y-1.5">
-        <span className="text-[12px] uppercase tracking-[0.2em] font-black text-white/60 group-hover:text-cyan-400 transition-colors">{label}</span>
-        {desc && <p className="text-[9px] text-white/20 font-medium leading-relaxed">{desc}</p>}
-      </div>
-      <span className="text-cyan-400 font-mono text-sm font-bold bg-cyan-400/5 px-3 py-1 rounded-lg ring-1 ring-cyan-400/20">
-        {value.toFixed(label.includes('频率') || label.includes('长度') ? 0 : (label.includes('频率') ? 5 : 3))}{unit}
-      </span>
+// --- Sub Components ---
+
+const SectionHeader = ({ title, onAll, onNone }: { title: string, onAll: () => void, onNone: () => void }) => (
+    <div className="flex justify-between items-center mb-3">
+        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">{title}</h3>
+        <div className="flex gap-2">
+            <button onClick={onAll} className="text-[10px] text-blue-500 font-bold hover:underline bg-blue-50 px-2 py-0.5 rounded">All</button>
+            <button onClick={onNone} className="text-[10px] text-gray-400 font-bold hover:underline bg-gray-100 px-2 py-0.5 rounded">None</button>
+        </div>
     </div>
-    <input 
-      type="range" 
-      min={min} 
-      max={max} 
-      step={step} 
-      value={value} 
-      onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="w-full h-1 bg-white/5 rounded-full appearance-none cursor-pointer accent-cyan-500 hover:bg-white/10 transition-all"
-    />
-  </div>
 );
 
+const VisualToggle = ({ label, icon, active, onClick, primary = false }: { label: string, icon: string, active: boolean, onClick: () => void, primary?: boolean }) => (
+    <button
+        onClick={onClick}
+        className={`p-2 rounded-xl text-[10px] font-medium transition-all border flex flex-col items-center justify-center gap-1 min-h-[60px] relative overflow-hidden group ${
+            active
+                ? (primary ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-blue-50 border-blue-200 text-blue-700')
+                : 'bg-white border-gray-100 text-gray-400 hover:border-gray-300 hover:scale-[1.02]'
+        }`}
+    >
+        <span className="text-xl mb-0.5 transform group-hover:scale-110 transition-transform">{icon}</span>
+        <span className="text-center leading-tight scale-90">{label}</span>
+        {active && <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${primary ? 'bg-purple-500' : 'bg-blue-500'}`}></div>}
+    </button>
+);
+
+const SettingSlider = ({ label, value, min, max, step, unit = '', onChange }: any) => (
+    <div className="group">
+        <div className="flex justify-between items-center mb-2">
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider group-hover:text-blue-600 transition-colors">{label}</span>
+            <span className="font-mono text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded">
+        {value.toFixed(label.includes('Interval') || label.includes('Length') ? 0 : 2)}{unit}
+      </span>
+        </div>
+        <input
+            type="range" min={min} max={max} step={step} value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value))}
+            className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 hover:bg-gray-300 transition-colors"
+        />
+    </div>
+);
+
+// END OF FILE: src/components/ui/SettingsPanel.tsx
 
 // =============================================================================
 // FILE: src\components\ui\TimeControlPanel.tsx
 // =============================================================================
 
+// FILE: src/components/ui/TimeControlPanel.tsx
+
 import React from 'react';
 import { TimeController } from '../../core/TimeController';
-import { CameraMode } from '../../types';
 
 interface TimeControlPanelProps {
   timeController: TimeController | null;
-  cameraMode: CameraMode;
   stats: {
     particles: number;
     fireworks: number;
     fps: number;
   };
-  onCameraModeChange: (mode: CameraMode) => void;
   onTimeScaleChange: (scale: number) => void;
   onTogglePause: () => void;
+  autoRotate: boolean;
+  onToggleAutoRotate: () => void;
 }
 
 export const TimeControlPanel: React.FC<TimeControlPanelProps> = ({
-  timeController,
-  cameraMode,
-  stats,
-  onCameraModeChange,
-  onTimeScaleChange,
-  onTogglePause
-}) => {
+                                                                    timeController,
+                                                                    stats,
+                                                                    onTimeScaleChange,
+                                                                    onTogglePause,
+                                                                    autoRotate,
+                                                                    onToggleAutoRotate
+                                                                  }) => {
   const timeScale = timeController?.timeScale ?? 1;
   const isPaused = timeController?.isPaused ?? false;
 
-  const presets = [
-    { label: '0.1x', value: 0.1, icon: '🐌' },
-    { label: '0.25x', value: 0.25, icon: '🐢' },
-    { label: '0.5x', value: 0.5, icon: '🚶' },
-    { label: '1x', value: 1, icon: '▶️' },
-    { label: '2x', value: 2, icon: '⏩' },
-    { label: '5x', value: 5, icon: '🚀' },
-  ];
-
   return (
-    <div className="absolute bottom-8 left-8 z-30 flex flex-col gap-4">
-      {/* Time Control */}
-      <div className="bg-black/60 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-cyan-400 text-sm font-bold tracking-wider">⏱ 时间控制</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${isPaused ? 'bg-red-500/30 text-red-300' : 'bg-green-500/30 text-green-300'}`}>
-            {isPaused ? '已暂停' : `${timeScale.toFixed(2)}x`}
+      <div className="absolute bottom-8 left-8 z-30 flex flex-col gap-3">
+        {/* 现代化浅色卡片 */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border border-white/50 w-64 transition-all hover:shadow-2xl hover:scale-[1.02]">
+
+          {/* 标题栏 */}
+          <div className="flex justify-between items-center mb-4">
+          <span className="text-gray-800 text-xs font-bold tracking-wider flex items-center gap-2">
+             <span className="text-lg">⚙️</span> ENGINE
           </span>
-        </div>
-        
-        {/* Pause Button */}
-        <button
-          onClick={onTogglePause}
-          className={`w-full mb-3 py-2.5 rounded-xl font-bold text-sm tracking-wider transition-all ${
-            isPaused 
-              ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/30'
-              : 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30'
-          }`}
-        >
-          {isPaused ? '▶ 继续 (P)' : '⏸ 暂停 (P)'}
-        </button>
+            <div className="flex gap-2 items-center bg-gray-100 px-2 py-1 rounded-lg">
+              <div className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-400 animate-pulse' : 'bg-green-500'}`}></div>
+              <span className="text-[10px] font-mono text-gray-500 font-bold">{stats.fps} FPS</span>
+            </div>
+          </div>
 
-        {/* Speed Presets */}
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          {presets.map(preset => (
+          {/* 控制按钮网格 */}
+          <div className="grid grid-cols-2 gap-2 mb-4">
             <button
-              key={preset.value}
-              onClick={() => onTimeScaleChange(preset.value)}
-              className={`py-2 rounded-lg text-xs font-bold transition-all ${
-                Math.abs(timeScale - preset.value) < 0.01 && !isPaused
-                  ? 'bg-cyan-500 text-black'
-                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
-              }`}
+                onClick={onTogglePause}
+                className={`py-2.5 rounded-xl font-bold text-[10px] transition-all flex items-center justify-center gap-1.5 border ${
+                    isPaused
+                        ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'
+                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                }`}
             >
-              <span className="text-sm">{preset.icon}</span>
-              <div className="mt-0.5">{preset.label}</div>
+              {isPaused ? '▶ RESUME' : '⏸ PAUSE'}
             </button>
-          ))}
-        </div>
 
-        {/* Custom Speed Slider */}
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => onTimeScaleChange(Math.max(0.1, timeScale - 0.25))}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 flex items-center justify-center"
-          >
-            -
-          </button>
-          <input
-            type="range"
-            min="0.1"
-            max="10"
-            step="0.1"
-            value={timeScale}
-            onChange={(e) => onTimeScaleChange(parseFloat(e.target.value))}
-            className="flex-1 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-cyan-500"
-          />
-          <button 
-            onClick={() => onTimeScaleChange(Math.min(10, timeScale + 0.25))}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 flex items-center justify-center"
-          >
-            +
-          </button>
-        </div>
-        
-        <div className="mt-2 text-[9px] text-white/30 text-center">
-          [ / ] 调整速度 • 1/2/3 快捷预设
-        </div>
-      </div>
-
-      {/* Camera Control */}
-      <div className="bg-black/60 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-purple-400 text-sm font-bold tracking-wider">🎥 相机模式</span>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => onCameraModeChange('orbit')}
-            className={`py-3 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1 ${
-              cameraMode === 'orbit'
-                ? 'bg-purple-500 text-white'
-                : 'bg-white/5 text-white/60 hover:bg-white/10'
-            }`}
-          >
-            <span className="text-lg">🌍</span>
-            <span>轨道视角</span>
-          </button>
-          <button
-            onClick={() => onCameraModeChange('firstPerson')}
-            className={`py-3 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1 ${
-              cameraMode === 'firstPerson'
-                ? 'bg-purple-500 text-white'
-                : 'bg-white/5 text-white/60 hover:bg-white/10'
-            }`}
-          >
-            <span className="text-lg">🚶</span>
-            <span>第一人称</span>
-          </button>
-        </div>
-        
-        <div className="mt-3 text-[9px] text-white/30 space-y-0.5">
-          {cameraMode === 'orbit' ? (
-            <>
-              <p>• 右键拖动旋转视角</p>
-              <p>• 滚轮缩放距离</p>
-              <p>• 左键点击发射烟花</p>
-            </>
-          ) : (
-            <>
-              <p>• WASD 移动</p>
-              <p>• 空格/Shift 上升/下降</p>
-              <p>• 鼠标控制视角</p>
-            </>
-          )}
-          <p>• C 切换模式</p>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="bg-black/60 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-green-400 text-sm font-bold tracking-wider">📊 实时统计</span>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="bg-white/5 rounded-lg p-2">
-            <div className="text-cyan-400 font-mono text-lg font-bold">{stats.fps}</div>
-            <div className="text-[9px] text-white/40">FPS</div>
+            <button
+                onClick={onToggleAutoRotate}
+                className={`py-2.5 rounded-xl font-bold text-[10px] transition-all flex items-center justify-center gap-1.5 border ${
+                    autoRotate
+                        ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
+                        : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50 hover:text-gray-600'
+                }`}
+            >
+              {autoRotate ? '↺ ROTATING' : '⊘ STATIC'}
+            </button>
           </div>
-          <div className="bg-white/5 rounded-lg p-2">
-            <div className="text-amber-400 font-mono text-lg font-bold">{stats.fireworks}</div>
-            <div className="text-[9px] text-white/40">烟花</div>
+
+          {/* 速度滑块 */}
+          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+            <div className="flex justify-between text-[10px] text-gray-400 mb-2 font-bold uppercase">
+              <span>Time Scale</span>
+              <span className="text-gray-800">{timeScale.toFixed(1)}x</span>
+            </div>
+            <input
+                type="range"
+                min="0.1"
+                max="3"
+                step="0.1"
+                value={timeScale}
+                onChange={(e) => onTimeScaleChange(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-gray-700 hover:accent-blue-600 transition-all"
+            />
+            <div className="flex justify-between mt-1 text-[8px] text-gray-300 font-mono">
+              <span>SLOW</span>
+              <span>FAST</span>
+            </div>
           </div>
-          <div className="bg-white/5 rounded-lg p-2">
-            <div className="text-purple-400 font-mono text-lg font-bold">{(stats.particles / 1000).toFixed(1)}K</div>
-            <div className="text-[9px] text-white/40">粒子</div>
+
+          {/* 底部统计信息 */}
+          <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2 text-[9px] text-gray-400 font-mono">
+            <div>
+              <span className="block text-gray-300 uppercase text-[8px]">Particles</span>
+              <span className="font-bold text-gray-600">{(stats.particles/1000).toFixed(1)}k</span>
+            </div>
+            <div className="text-right">
+              <span className="block text-gray-300 uppercase text-[8px]">Fireworks</span>
+              <span className="font-bold text-gray-600">{stats.fireworks}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
   );
 };
 
+// END OF FILE: src/components/ui/TimeControlPanel.tsx
 
 // =============================================================================
 // FILE: src\core\Firework.ts
@@ -1838,8 +1623,10 @@ export class Firework {
 // FILE: src\core\Firework3D.ts
 // =============================================================================
 
+// FILE: src/core/Firework3D.ts
+
 import { Vector3 } from './Vector3';
-import { ExplosionType, AppSettings, ParticleOptions3D } from '../types';
+import { ExplosionType, AscensionType, ColorStyle, AppSettings, ParticleOptions3D, FireworkConfig } from '../types';
 import { Particle3D } from './Particle3D';
 
 export interface Firework3DOptions {
@@ -1854,7 +1641,6 @@ export interface Firework3DOptions {
 
 /**
  * 3D Firework class
- * Launches from ground and explodes at target position
  */
 export class Firework3D {
   position: Vector3;
@@ -1865,258 +1651,511 @@ export class Firework3D {
   exploded: boolean = false;
   trail: Vector3[] = [];
   trailLength: number;
-  
-  // For rendering
-  size: number = 3;
 
-  constructor(options: Firework3DOptions, settings: AppSettings) {
-    // Start from ground (Y = 0)
+  public type: ExplosionType;
+  public ascension: AscensionType;
+  public colorStyle: ColorStyle;
+  public lifeTime: number = 0;
+
+  private initialX: number;
+  private initialZ: number;
+
+  constructor(options: Firework3DOptions, settings: AppSettings, config: FireworkConfig) {
+    this.initialX = options.startX;
+    this.initialZ = options.startZ;
     this.position = new Vector3(options.startX, 0, options.startZ);
     this.target = new Vector3(options.targetX, options.targetY, options.targetZ);
     this.hue = options.hue;
     this.charge = options.charge;
     this.trailLength = settings.trailLength;
 
-    // Calculate initial velocity to reach target
+    // 1. 从配置中随机选择升空方式
+    const ascList = config.enabledAscensions.length > 0 ? config.enabledAscensions : [AscensionType.LINEAR];
+    this.ascension = ascList[Math.floor(Math.random() * ascList.length)];
+
+    // 2. 从配置中随机选择颜色风格
+    const colList = config.enabledColors.length > 0 ? config.enabledColors : [ColorStyle.SINGLE];
+    this.colorStyle = colList[Math.floor(Math.random() * colList.length)];
+
+    // 3. 从配置中随机选择爆炸类型
+    const typeList = config.enabledShapes.length > 0 ? config.enabledShapes : [ExplosionType.SPHERE];
+    this.type = typeList[Math.floor(Math.random() * typeList.length)];
+
+    // 4. 计算初始速度
     const distanceY = this.target.y - this.position.y;
-    const gravity = settings.gravity;
-    
-    // Using kinematic equations to calculate initial velocity
+    let gravity = settings.gravity * 1.5;
+
+    if (this.ascension === AscensionType.ACCELERATE) {
+      gravity *= 0.8;
+    }
+
     const timeToApex = Math.sqrt(2 * Math.max(10, distanceY) / gravity);
     const initialVelY = gravity * timeToApex;
-    
-    // Calculate horizontal velocities
+
     const initialVelX = (this.target.x - this.position.x) / timeToApex;
     const initialVelZ = (this.target.z - this.position.z) / timeToApex;
 
-    this.velocity = new Vector3(
-      initialVelX * (0.85 + Math.random() * 0.3),
-      initialVelY * (0.85 + Math.random() * 0.3),
-      initialVelZ * (0.85 + Math.random() * 0.3)
-    );
+    this.velocity = new Vector3(initialVelX, initialVelY, initialVelZ);
   }
 
   update(settings: AppSettings, deltaTime: number): void {
-    // Skip update if paused
     if (deltaTime <= 0) return;
-    
-    const dt = deltaTime * 60; // Normalize to 60fps
 
-    // Store trail
-    this.trail.push(this.position.clone());
-    if (this.trail.length > this.trailLength) {
-      this.trail.shift();
+    const dt = deltaTime * 60;
+    this.lifeTime += deltaTime;
+
+    // === 升空物理模拟 ===
+    switch (this.ascension) {
+      case AscensionType.SPIRAL: {
+        const freq = 10;
+        const angle = this.lifeTime * freq;
+        this.velocity.x += Math.cos(angle) * 0.6;
+        this.velocity.z += Math.sin(angle) * 0.6;
+        this.velocity.y -= settings.gravity * 1.5 * dt;
+        break;
+      }
+      case AscensionType.ZIGZAG: {
+        const freq = 8;
+        this.velocity.x += Math.cos(this.lifeTime * freq) * 0.8;
+        this.velocity.y -= settings.gravity * 1.5 * dt;
+        break;
+      }
+      case AscensionType.ACCELERATE: {
+        if (this.lifeTime < 0.5) this.velocity.y -= settings.gravity * 1.5 * dt;
+        else if (this.lifeTime < 1.0) this.velocity.y += 0.3 * dt;
+        else this.velocity.y -= settings.gravity * 2.0 * dt;
+        break;
+      }
+      case AscensionType.DRAWING: {
+        this.velocity.y -= settings.gravity * 1.2 * dt;
+        break;
+      }
+      case AscensionType.WOBBLE: {
+        this.velocity.x += (Math.random()-0.5) * 1.0;
+        this.velocity.z += (Math.random()-0.5) * 1.0;
+        this.velocity.y -= settings.gravity * 1.5 * dt;
+        break;
+      }
+      default: // LINEAR
+        this.velocity.y -= settings.gravity * 1.5 * dt;
+        break;
     }
 
-    // Apply gravity (Y-up)
-    this.velocity.y -= settings.gravity * dt;
-
-    // Update position
     this.position.x += this.velocity.x * dt;
     this.position.y += this.velocity.y * dt;
     this.position.z += this.velocity.z * dt;
 
-    // Check if reached apex (velocity Y becomes negative)
-    if (this.velocity.y <= 0) {
+    if (this.velocity.y <= -2.5) {
       this.exploded = true;
     }
   }
 
-  /**
-   * Create explosion particles
-   */
   createExplosion(
-    settings: AppSettings,
-    spawnParticle: (opts: ParticleOptions3D) => Particle3D
+      settings: AppSettings,
+      spawnParticle: (opts: ParticleOptions3D) => Particle3D
   ): void {
-    const types = Object.values(ExplosionType);
-    const type = types[Math.floor(Math.random() * types.length)] as ExplosionType;
-
-    let baseCount = Math.floor((180 + this.charge * 450) * settings.particleCountMultiplier);
+    let baseCount = Math.min(800, Math.floor((150 + this.charge * 300) * settings.particleCountMultiplier));
     const sizeScale = settings.explosionSizeMultiplier;
 
-    const spawn = (
-      theta: number,
-      phi: number,
-      speed: number,
-      extraHue: number = 0,
-      behavior: any = 'default',
-      decay?: number
-    ) => {
+    // === 颜色生成器 ===
+    const getParticleHue = (index: number, total: number): number => {
+      switch (this.colorStyle) {
+        case ColorStyle.RAINBOW: return (index / total) * 360;
+        case ColorStyle.DUAL: return index % 2 === 0 ? this.hue : (this.hue + 180) % 360;
+        case ColorStyle.GRADIENT: return this.hue + (index / total) * 60 - 30;
+        case ColorStyle.GOLDEN: return 45 + Math.random() * 10;
+        case ColorStyle.PASTEL: return this.hue; // 在渲染层处理饱和度更好，这里暂且用原色
+        default: return this.hue;
+      }
+    };
+
+    // === 发射器工厂 ===
+    const spawn = (theta: number, phi: number, speed: number, hueOverride?: number, behavior: any = 'default', decay?: number, friction?: number, size?: number) => {
       spawnParticle({
-        x: this.position.x,
-        y: this.position.y,
-        z: this.position.z,
-        originX: this.position.x,
-        originY: this.position.y,
-        originZ: this.position.z,
-        hue: (this.hue + extraHue) % 360,
-        theta,
-        phi,
-        speed: speed * sizeScale,
+        x: this.position.x, y: this.position.y, z: this.position.z,
+        originX: this.position.x, originY: this.position.y, originZ: this.position.z,
+        hue: hueOverride ?? this.hue,
+        theta, phi, speed: speed * sizeScale,
         gravity: settings.gravity,
-        friction: settings.friction,
-        behavior,
-        decay
+        friction: friction ?? settings.friction,
+        behavior, size,
+        decay: decay ?? (0.01 + Math.random() * 0.015)
       });
     };
 
-    // Helper to create spherical distribution
-    const sphericalSpawn = (count: number, speedBase: number, speedVar: number, behavior: any = 'default') => {
-      for (let i = 0; i < count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1); // Uniform sphere distribution
-        const speed = speedBase + Math.random() * speedVar;
-        spawn(theta, phi, speed, Math.random() * 30, behavior);
-      }
+    const spawnToShape = (x: number, y: number, z: number, hue: number) => {
+      const speedMod = 15 * sizeScale;
+      const len = Math.sqrt(x*x + y*y + z*z);
+      if (len === 0) return;
+      const p = spawnParticle({
+        x: this.position.x, y: this.position.y, z: this.position.z,
+        hue: hue, speed: 0,
+        friction: 0.88, gravity: 0.02, decay: 0.005 + Math.random() * 0.008,
+        behavior: 'stationary'
+      });
+      p.velocity = new Vector3(
+          (x/len)*speedMod*(len*0.1), (y/len)*speedMod*(len*0.1), (z/len)*speedMod*(len*0.1)
+      );
     };
 
-    switch (type) {
-      case ExplosionType.HEART: {
-        const heartCount = Math.floor(baseCount * 1.5);
-        for (let i = 0; i < heartCount; i++) {
-          const t = (i / heartCount) * Math.PI * 2;
-          const x = 16 * Math.pow(Math.sin(t), 3);
-          const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
-          const speed = (Math.sqrt(x * x + y * y) / 8) * (6 + this.charge * 8);
-          const theta = Math.atan2(x, 1);
-          const phi = Math.atan2(Math.sqrt(x * x + 1), y) + Math.PI / 2;
-          spawn(theta, phi, speed, 0, 'default', 0.012);
+    // === 32种烟花逻辑实现 ===
+    switch (this.type) {
+        // --- 基础类 ---
+      case ExplosionType.SPHERE:
+      case ExplosionType.BURST: {
+        for (let i = 0; i < baseCount; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          spawn(theta, phi, 20 + Math.random() * 10, getParticleHue(i, baseCount));
+        }
+        break;
+      }
+      case ExplosionType.RING: {
+        for (let i = 0; i < baseCount; i++) {
+          spawn(Math.random() * Math.PI * 2, Math.PI / 2, 25, getParticleHue(i, baseCount));
+        }
+        break;
+      }
+      case ExplosionType.DOUBLE_RING: {
+        for (let i = 0; i < baseCount; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          spawn(theta, Math.PI/2, 30, this.hue); // 外
+          spawn(theta, Math.PI/2, 15, (this.hue+180)%360); // 内
+        }
+        break;
+      }
+      case ExplosionType.WILLOW: {
+        for (let i = 0; i < baseCount; i++) {
+          spawn(Math.random() * Math.PI * 2, Math.random() * Math.PI, 15, getParticleHue(i, baseCount), 'willow', 0.008);
+        }
+        break;
+      }
+      case ExplosionType.STAGED: {
+        for (let i = 0; i < baseCount*0.5; i++) spawn(Math.random()*6.28, Math.acos(2*Math.random()-1), 35, this.hue, 'default', 0.05);
+        for (let i = 0; i < baseCount*0.5; i++) spawn(Math.random()*6.28, Math.acos(2*Math.random()-1), 8, (this.hue+60)%360, 'glitter', 0.008, 0.92);
+        break;
+      }
+      case ExplosionType.FLASH: {
+        for (let i = 0; i < baseCount; i++) {
+          spawn(Math.random()*6.28, Math.acos(2*Math.random()-1), 25, 0, 'glitter', 0.03, 0.9); // 白闪
         }
         break;
       }
 
+        // --- 自然/生物 ---
+      case ExplosionType.FLOWER: {
+        // 花瓣算法
+        const petals = 6;
+        for (let i = 0; i < baseCount; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = (Math.sin(theta * petals) + 1) * 0.5 * Math.PI; // 花瓣形状
+          spawn(theta, phi * 0.5, 20, getParticleHue(i, baseCount));
+        }
+        break;
+      }
+      case ExplosionType.BUTTERFLY: {
+        const count = baseCount * 1.2;
+        for (let i = 0; i < count; i++) {
+          const t = i * 0.1;
+          const m = (Math.exp(Math.cos(t)) - 2*Math.cos(4*t) - Math.pow(Math.sin(t/12), 5)) * 12;
+          spawnToShape(Math.sin(t)*m, Math.cos(t)*m, (Math.random()-0.5)*4, getParticleHue(i, count));
+        }
+        break;
+      }
+      case ExplosionType.FALLING_LEAVES: {
+        for (let i = 0; i < baseCount; i++) {
+          const theta = Math.random() * 6.28;
+          const r = Math.random() * 40;
+          const p = spawnParticle({
+            x: this.position.x, y: this.position.y, z: this.position.z,
+            hue: getParticleHue(i, baseCount), speed: 0, gravity: 0.03, friction: 0.85, decay: 0.006, behavior: 'falling'
+          });
+          p.velocity = new Vector3(Math.cos(theta)*r, 10 + (Math.random()-0.5)*15, Math.sin(theta)*r);
+        }
+        break;
+      }
+      case ExplosionType.SNOWFLAKE: {
+        const arms = 6;
+        for(let i=0; i<arms; i++) {
+          const angle = (i/arms) * Math.PI * 2;
+          for(let j=0; j<20; j++) {
+            // 主干
+            spawnToShape(Math.cos(angle)*j*2, Math.sin(angle)*j*2, 0, 200); // 蓝色系
+            // 分叉
+            if(j > 10 && j % 3 === 0) {
+              spawnToShape(Math.cos(angle+0.5)*j*2, Math.sin(angle+0.5)*j*2, 0, 200);
+              spawnToShape(Math.cos(angle-0.5)*j*2, Math.sin(angle-0.5)*j*2, 0, 200);
+            }
+          }
+        }
+        break;
+      }
+      case ExplosionType.FISH: {
+        // 简单鱼形 (侧面)
+        for(let i=0; i<baseCount; i++) {
+          const t = (i/baseCount) * Math.PI * 2;
+          const x = 30 * Math.cos(t) - 15 * Math.sin(t) * Math.sin(t);
+          const y = 30 * Math.cos(t) * Math.sin(t);
+          spawnToShape(x, y, (Math.random()-0.5)*5, 10); // 红色锦鲤
+        }
+        break;
+      }
+      case ExplosionType.CAT_FACE: {
+        // 脸圆
+        for(let i=0; i<50; i++) {
+          const t = (i/50)*6.28;
+          spawnToShape(Math.cos(t)*20, Math.sin(t)*15, 0, 30);
+        }
+        // 耳朵
+        for(let i=0; i<20; i++) {
+          const x = 10 + i * 0.5; const y = 10 + i * 1.5;
+          spawnToShape(x, y, 0, 30); spawnToShape(-x, y, 0, 30);
+        }
+        // 眼睛嘴巴 (略)
+        spawnToShape(-8, 5, 0, 120); spawnToShape(8, 5, 0, 120);
+        break;
+      }
+
+        // --- 几何 ---
+      case ExplosionType.CUBE: {
+        const side = 20;
+        const step = 5;
+        for(let x=-side; x<=side; x+=step) {
+          for(let y=-side; y<=side; y+=step) {
+            for(let z=-side; z<=side; z+=step) {
+              if (Math.abs(x)===side || Math.abs(y)===side || Math.abs(z)===side) {
+                spawnToShape(x, y, z, getParticleHue(x+y+z, side*3));
+              }
+            }
+          }
+        }
+        break;
+      }
+      case ExplosionType.PYRAMID: {
+        // 四面体
+        const h = 30;
+        for(let i=0; i<100; i++) {
+          const t = i/100;
+          // 边缘
+          spawnToShape(t*h, -h/2, t*h, this.hue);
+          spawnToShape(-t*h, -h/2, t*h, this.hue);
+          // 顶点连线
+          spawnToShape(t*h, -h/2 + (1-t)*h, t*h, this.hue); // 粗略模拟
+        }
+        break;
+      }
       case ExplosionType.STAR: {
         const pts = 5;
-        const starCount = Math.floor(baseCount * 1.3);
-        for (let i = 0; i < starCount; i++) {
-          const ang = (i / starCount) * Math.PI * 2;
-          const mod = Math.abs(Math.cos(ang * pts / 2)) * 0.7 + 0.3;
-          const theta = ang;
-          const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
-          spawn(theta, phi, mod * (14 + this.charge * 18));
+        for(let i=0; i<baseCount; i++) {
+          const ang = (i / baseCount) * Math.PI * 2;
+          const r = 30 * (Math.abs(Math.cos(ang * pts / 2)) * 0.5 + 0.5); // 简单的星形极坐标
+          // 更好的星形：
+          // const r = 30 * (Math.sin(ang * 5 / 2 + Math.PI/2) * 0.5 + 0.8);
+          spawnToShape(Math.cos(ang)*r, Math.sin(ang)*r, 0, this.hue);
         }
         break;
       }
-
-      case ExplosionType.GALAXY: {
-        const arms = 4 + Math.floor(this.charge * 4);
-        for (let a = 0; a < arms; a++) {
-          const armBaseAngle = (a / arms) * Math.PI * 2;
-          for (let i = 0; i < baseCount / arms; i++) {
-            const prog = i / (baseCount / arms);
-            const theta = armBaseAngle + prog * Math.PI * 2.5;
-            const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
-            const speed = prog * (15 + this.charge * 15);
-            spawn(theta, phi, speed, prog * 80, 'galaxy');
-          }
+      case ExplosionType.HEART_BEAT: {
+        const count = Math.floor(baseCount * 1.2);
+        for (let i = 0; i < count; i++) {
+          const t = Math.random() * Math.PI * 2;
+          const scale = 2.0;
+          const hx = 16 * Math.pow(Math.sin(t), 3) * scale;
+          const hy = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * scale;
+          spawnToShape(hx, hy, (Math.random() - 0.5) * 8, 330 + Math.random() * 30);
         }
         break;
       }
-
+      case ExplosionType.SMILE: {
+        const r = 25;
+        // 脸
+        for(let i=0; i<60; i++) {
+          const t = (i/60)*6.28;
+          spawnToShape(Math.cos(t)*r, Math.sin(t)*r, 0, 50); // 黄脸
+        }
+        // 眼
+        spawnToShape(-8, 8, 0, 0); spawnToShape(8, 8, 0, 0);
+        // 嘴
+        for(let i=0; i<30; i++) {
+          const t = Math.PI + (i/30)*Math.PI;
+          spawnToShape(Math.cos(t)*15, Math.sin(t)*15 - 5, 0, 0);
+        }
+        break;
+      }
       case ExplosionType.SPIRAL: {
-        const sArms = 4 + Math.floor(this.charge * 4);
-        const pPerArm = Math.floor(baseCount / sArms);
-        for (let a = 0; a < sArms; a++) {
-          const armBaseAngle = (a / sArms) * Math.PI * 2;
-          for (let i = 0; i < pPerArm; i++) {
-            const prog = i / pPerArm;
-            const swirlAngle = armBaseAngle + prog * Math.PI * 8;
-            const phi = Math.PI / 2 + (prog - 0.5) * 0.5;
-            const speed = (0.2 + prog * 0.8) * (20 + this.charge * 15);
-            spawn(swirlAngle, phi, speed, prog * 60);
+        // 阿基米德螺旋
+        for(let i=0; i<baseCount; i++) {
+          const t = i * 0.1;
+          const r = 1 + t * 0.5;
+          spawnToShape(r*Math.cos(t), r*Math.sin(t), 0, getParticleHue(i, baseCount));
+        }
+        break;
+      }
+
+        // --- 宏大 ---
+      case ExplosionType.GALAXY: {
+        const arms = 5;
+        for(let i=0; i<baseCount; i++) {
+          const arm = Math.floor(Math.random() * arms);
+          const dist = Math.random() * 40;
+          const angle = (arm / arms) * 6.28 + dist * 0.1;
+          spawnToShape(Math.cos(angle)*dist, (Math.random()-0.5)*5, Math.sin(angle)*dist, getParticleHue(dist, 40));
+        }
+        break;
+      }
+      case ExplosionType.SATURN: {
+        for(let i=0; i<baseCount/2; i++) { // 本体
+          const theta = Math.random()*6.28, phi = Math.acos(2*Math.random()-1);
+          spawn(theta, phi, Math.random()*15, 40);
+        }
+        for(let i=0; i<baseCount; i++) { // 环
+          const angle = Math.random()*6.28, dist = 30+Math.random()*10;
+          spawnToShape(Math.cos(angle)*dist, Math.cos(angle)*dist*0.3, Math.sin(angle)*dist, 200);
+        }
+        break;
+      }
+      case ExplosionType.HELIX: {
+        const h = 100, turns = 3;
+        for(let i=0; i<baseCount; i++) {
+          const y = (i/baseCount - 0.5) * h;
+          const angle = (i/baseCount) * 6.28 * turns;
+          spawnToShape(Math.cos(angle)*20, y, Math.sin(angle)*20, this.hue);
+          spawnToShape(Math.cos(angle+Math.PI)*20, y, Math.sin(angle+Math.PI)*20, (this.hue+180)%360);
+        }
+        break;
+      }
+      case ExplosionType.DRAGON: {
+        const segments = 50;
+        for (let i = 0; i < segments; i++) {
+          const p = i / segments;
+          const a = p * 6.28 * 2;
+          const r = (10 + p * 30);
+          spawnToShape(Math.cos(a)*r, (p-0.5)*200, Math.sin(a)*r, 45);
+        }
+        break;
+      }
+      case ExplosionType.GREAT_WALL: {
+        const len = 300, h = 40;
+        for (let i = 0; i < 300; i++) {
+          const x = (i/300 - 0.5) * len;
+          const tower = Math.sin(x*0.15) > 0.8;
+          const y = tower ? h*1.5 : h*Math.abs(Math.sin(x*0.05));
+          spawnToShape(x, y, Math.sin(x*0.05)*20, 30);
+        }
+        break;
+      }
+      case ExplosionType.ZODIAC: {
+        // 蛇
+        for(let i=0; i<300; i++) {
+          const t = i * 0.15;
+          spawnToShape((t - 300*0.15/2)*10, Math.cos(t*0.5)*15, Math.sin(t)*30, 120);
+        }
+        break;
+      }
+      case ExplosionType.GHOST: {
+        for (let i = 0; i < baseCount; i++) {
+          const theta = Math.random() * 6.28, phi = Math.acos(2 * Math.random() - 1);
+          spawn(theta, phi, 10 + Math.random() * 25, 260, 'ghost', 0.01, 0.94);
+        }
+        break;
+      }
+      case ExplosionType.CROSS_STEP: {
+        for(let j=0; j<4; j++) {
+          const baseTheta = (j/4)*6.28, basePhi = Math.PI/2;
+          for(let k=0; k<40; k++) spawn(baseTheta, basePhi, 10+k, (this.hue+k*5)%360, 'glitter', 0.015);
+        }
+        break;
+      }
+
+        // --- 新增创意 ---
+      case ExplosionType.ATOM: {
+        // 核
+        for(let i=0; i<50; i++) spawnToShape((Math.random()-0.5)*10, (Math.random()-0.5)*10, (Math.random()-0.5)*10, 0);
+        // 电子轨道
+        const orbits = 3;
+        for(let o=0; o<orbits; o++) {
+          const rotX = Math.random()*3, rotY = Math.random()*3;
+          for(let i=0; i<100; i++) {
+            const a = (i/100)*6.28;
+            const r = 30;
+            let x = Math.cos(a)*r, y = Math.sin(a)*r, z = 0;
+            // 3D 旋转矩阵简化
+            // ...这里简化处理，只做平面圆
+            if (o===0) spawnToShape(x, y, z, 200);
+            else if (o===1) spawnToShape(x, z, y, 200);
+            else spawnToShape(z, x, y, 200);
           }
         }
         break;
       }
-
-      case ExplosionType.BUTTERFLY: {
-        const bfCount = Math.floor(baseCount * 1.5);
-        for (let i = 0; i < bfCount; i++) {
-          const t = (i / bfCount) * Math.PI * 2;
-          const r = Math.exp(Math.sin(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin((2 * t - Math.PI) / 24), 5);
-          const x = Math.sin(t) * r;
-          const y = -Math.cos(t) * r;
-          const speed = Math.sqrt(x * x + y * y) * (8 + this.charge * 10);
-          const theta = Math.atan2(x, 1);
-          const phi = Math.PI / 2;
-          spawn(theta, phi, speed, Math.sin(t) * 40);
+      case ExplosionType.FAN: {
+        // 扇形向上
+        for(let i=0; i<baseCount; i++) {
+          const a = (i/baseCount) * Math.PI; // 0 to PI
+          const r = 10 + Math.random() * 30;
+          spawnToShape(Math.cos(a)*r, Math.sin(a)*r, 0, getParticleHue(i, baseCount));
         }
         break;
       }
-
-      case ExplosionType.DOUBLE_RING: {
-        const ringCount = Math.floor(baseCount * 0.6);
-        // Outer ring
-        for (let i = 0; i < ringCount; i++) {
-          const theta = (i / ringCount) * Math.PI * 2;
-          spawn(theta, Math.PI / 2, 22 + this.charge * 12);
-        }
-        // Inner ring
-        for (let i = 0; i < ringCount; i++) {
-          const theta = (i / ringCount) * Math.PI * 2 + 0.2;
-          spawn(theta, Math.PI / 2, 14 + this.charge * 8, 40);
+      case ExplosionType.WATERFALL: {
+        // 顶部水平喷发，然后重力接管
+        for(let i=0; i<baseCount; i++) {
+          const theta = Math.random() * 6.28;
+          const r = Math.random() * 20;
+          const p = spawnParticle({
+            x: this.position.x, y: this.position.y, z: this.position.z,
+            hue: 200, speed: 0, gravity: 0.05, friction: 0.95, decay: 0.005, behavior: 'default'
+          });
+          p.velocity = new Vector3(Math.cos(theta)*r, 5, Math.sin(theta)*r);
         }
         break;
       }
-
-      case ExplosionType.GLITTER:
-        sphericalSpawn(baseCount, 5, 22 + this.charge * 18, 'glitter');
-        break;
-
-      case ExplosionType.WILLOW:
-        sphericalSpawn(baseCount, 8, 15 + this.charge * 12, 'willow');
-        break;
-
-      case ExplosionType.FIREFLY:
-        sphericalSpawn(Math.floor(baseCount * 0.5), 3, 10 + this.charge * 8, 'firefly');
-        break;
-
-      case ExplosionType.COMET: {
-        // Launch several comets in different directions
-        const cometCount = 5 + Math.floor(this.charge * 5);
-        for (let i = 0; i < cometCount; i++) {
-          const theta = (i / cometCount) * Math.PI * 2;
-          const phi = Math.PI / 3 + Math.random() * (Math.PI / 3);
-          spawn(theta, phi, 15 + this.charge * 20, i * 30, 'comet', 0.004);
+      case ExplosionType.CHAOS: {
+        for(let i=0; i<baseCount; i++) {
+          spawn(Math.random()*6.28, Math.random()*3.14, Math.random()*40, Math.random()*360);
         }
-        // Plus some regular particles
-        sphericalSpawn(Math.floor(baseCount * 0.3), 5, 15, 'default');
+        break;
+      }
+      case ExplosionType.TEXT_HI: {
+        // H
+        for(let y=-20; y<=20; y+=2) { spawnToShape(-15, y, 0, this.hue); spawnToShape(-5, y, 0, this.hue); }
+        for(let x=-15; x<=-5; x+=2) spawnToShape(x, 0, 0, this.hue);
+        // I
+        for(let y=-20; y<=20; y+=2) spawnToShape(10, y, 0, this.hue);
+        break;
+      }
+      case ExplosionType.CROWN: {
+        for(let i=0; i<baseCount; i++) {
+          const a = (i/baseCount)*6.28;
+          const r = 30;
+          const h = 20 * Math.abs(Math.sin(a*3)); // 皇冠波浪
+          spawnToShape(Math.cos(a)*r, h, Math.sin(a)*r, 50);
+        }
         break;
       }
 
       default:
-        // Default spherical burst
-        sphericalSpawn(baseCount, 5, 20 + this.charge * 24, 'default');
+        for (let i = 0; i < baseCount; i++) {
+          const theta = Math.random() * 6.28, phi = Math.acos(2*Math.random()-1);
+          spawn(theta, phi, 10+Math.random()*20, this.hue);
+        }
         break;
     }
   }
 
   getColor(): { r: number; g: number; b: number } {
-    const h = this.hue / 360;
-    const s = 1;
-    const l = 0.75;
-
+    const h = this.hue / 360; const s = 1; const l = 0.6;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s; const p = 2 * l - q;
     const hue2rgb = (p: number, q: number, t: number) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t; if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6; return p;
     };
-
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-
-    return {
-      r: hue2rgb(p, q, h + 1 / 3),
-      g: hue2rgb(p, q, h),
-      b: hue2rgb(p, q, h - 1 / 3)
-    };
+    return { r: hue2rgb(p, q, h + 1/3), g: hue2rgb(p, q, h), b: hue2rgb(p, q, h - 1/3) };
   }
 }
 
+// END OF FILE: src/core/Firework3D.ts
 
 // =============================================================================
 // FILE: src\core\Particle.ts
@@ -2961,97 +3000,171 @@ body {
 // FILE: src\types\index.ts
 // =============================================================================
 
+// FILE: src/types/index.ts
 
 export enum ExplosionType {
-  RING = '环形',
-  BURST = '爆发',
-  DOUBLE_LAYER = '双层',
-  WILLOW = '垂柳',
-  HEART = '心形',
-  GLITTER = '闪烁',
-  SPIRAL = '螺旋',
-  CROSS = '十字',
-  RAINBOW = '彩虹',
-  STAR = '星芒',
-  WAVE = '波浪',
-  CROWN = '皇冠',
-  PLANET = '行星',
-  DANDELION = '蒲公英',
-  FIREFLY = '萤火虫',
+  // === 经典 ===
+  SPHERE = '标准球形',
+  BURST = '高亮爆发',
+  RING = '星环',
+  DOUBLE_RING = '双层环',
+  WILLOW = '金柳垂丝',
+  STAGED = '子母连爆',
+  FLASH = '雷霆闪光',
+
+  // === 自然 ===
+  FLOWER = '盛世牡丹',
+  BUTTERFLY = '幻彩蝴蝶',
+  FALLING_LEAVES = '漫天落叶',
+  SNOWFLAKE = '六角雪花',
+  FISH = '锦鲤游动',
+  CAT_FACE = '猫咪笑脸',
+
+  // === 几何/抽象 ===
+  CUBE = '量子立方',
+  PYRAMID = '金字塔',
+  STAR = '五角星',
+  HEART_BEAT = '跳动之心',
+  SMILE = '笑脸',
+  SPIRAL = '阿基米德',
+
+  // === 宏大 ===
+  GALAXY = '银河系',
   SATURN = '土星环',
-  BUTTERFLY = '幻蝶',
-  JELLYFISH = '水母',
-  GALAXY = '星系',
-  COMET = '彗星',
-  SNOWFLAKE = '雪花',
-  FOUNTAIN = '喷泉',
-  GHOST = '幽灵',
-  DOUBLE_RING = '双环'
+  HELIX = 'DNA双螺旋',
+  DRAGON = '游龙戏珠',
+  GREAT_WALL = '万里长城',
+  ZODIAC = '灵蛇狂舞',
+  GHOST = '幽灵魅影',
+  CROSS_STEP = '十字变色',
+
+  // === 创意 ===
+  ATOM = '原子结构',
+  FAN = '孔雀开屏',
+  WATERFALL = '九天瀑布',
+  CHAOS = '混沌理论',
+  TEXT_HI = '字形:Hi',
+  CROWN = '皇冠'
 }
 
-export type ParticleBehavior = 'default' | 'willow' | 'glitter' | 'ghost' | 'firefly' | 'comet' | 'galaxy';
+// 图标映射：实现"图文并茂"
+export const SHAPE_ICONS: Record<ExplosionType, string> = {
+  [ExplosionType.SPHERE]: '💥', [ExplosionType.BURST]: '✨',
+  [ExplosionType.RING]: '⭕', [ExplosionType.DOUBLE_RING]: '◎',
+  [ExplosionType.WILLOW]: '🎋', [ExplosionType.STAGED]: '🎆',
+  [ExplosionType.FLASH]: '⚡', [ExplosionType.FLOWER]: '🌺',
+  [ExplosionType.BUTTERFLY]: '🦋', [ExplosionType.FALLING_LEAVES]: '🍂',
+  [ExplosionType.SNOWFLAKE]: '❄️', [ExplosionType.FISH]: '🐟',
+  [ExplosionType.CAT_FACE]: '🐱', [ExplosionType.CUBE]: '🧊',
+  [ExplosionType.PYRAMID]: '🔺', [ExplosionType.STAR]: '⭐',
+  [ExplosionType.HEART_BEAT]: '❤️', [ExplosionType.SMILE]: '🙂',
+  [ExplosionType.SPIRAL]: '🍥', [ExplosionType.GALAXY]: '🌌',
+  [ExplosionType.SATURN]: '🪐', [ExplosionType.HELIX]: '🧬',
+  [ExplosionType.DRAGON]: '🐉', [ExplosionType.GREAT_WALL]: '🧱',
+  [ExplosionType.ZODIAC]: '🐍', [ExplosionType.GHOST]: '👻',
+  [ExplosionType.CROSS_STEP]: '✥', [ExplosionType.ATOM]: '⚛️',
+  [ExplosionType.FAN]: '🪭', [ExplosionType.WATERFALL]: '🌊',
+  [ExplosionType.CHAOS]: '🎲', [ExplosionType.TEXT_HI]: 'H',
+  [ExplosionType.CROWN]: '👑'
+};
+
+export enum AscensionType {
+  LINEAR = '直线升空',
+  SPIRAL = '螺旋盘旋',
+  ZIGZAG = 'S型摇摆',
+  ACCELERATE = '极速推进',
+  DRAWING = '空中绘图',
+  WOBBLE = '随机扰动'
+}
+
+export const ASCENSION_ICONS: Record<AscensionType, string> = {
+  [AscensionType.LINEAR]: '⬆️',
+  [AscensionType.SPIRAL]: '🌀',
+  [AscensionType.ZIGZAG]: '〰️',
+  [AscensionType.ACCELERATE]: '🚀',
+  [AscensionType.DRAWING]: '🖌️',
+  [AscensionType.WOBBLE]: '🫨'
+};
+
+export enum ColorStyle {
+  SINGLE = '纯净单色',
+  DUAL = '双色互补',
+  RAINBOW = '七彩虹光',
+  GRADIENT = '同系渐变',
+  GOLDEN = '流金岁月',
+  PASTEL = '马卡龙色'
+}
+
+export const COLOR_ICONS: Record<ColorStyle, string> = {
+  [ColorStyle.SINGLE]: '🔴',
+  [ColorStyle.DUAL]: '🌗',
+  [ColorStyle.RAINBOW]: '🌈',
+  [ColorStyle.GRADIENT]: '🍧',
+  [ColorStyle.GOLDEN]: '🏆',
+  [ColorStyle.PASTEL]: '🍬'
+};
+
+export type ParticleBehavior = 'default' | 'willow' | 'glitter' | 'ghost' | 'firefly' | 'comet' | 'galaxy' | 'stationary' | 'falling';
 
 export type CameraMode = 'orbit' | 'firstPerson';
 
-export interface ParticleOptions {
-  x: number;
-  y: number;
-  hue: number;
-  speed?: number;
-  angle?: number;
-  friction?: number;
-  gravity?: number;
-  resistance?: number;
-  size?: number;
-  decay?: number;
-  behavior?: ParticleBehavior;
-  originX?: number;
-  originY?: number;
-}
-
 export interface ParticleOptions3D {
-  x: number;
-  y: number;
-  z: number;
-  hue: number;
-  speed?: number;
-  theta?: number;  // Horizontal angle
-  phi?: number;    // Vertical angle
-  friction?: number;
-  gravity?: number;
-  resistance?: number;
-  size?: number;
-  decay?: number;
-  behavior?: ParticleBehavior;
-  originX?: number;
-  originY?: number;
-  originZ?: number;
-}
-
-export interface FireworkOptions {
-  startX: number;
-  targetX: number;
-  targetY: number;
-  hue: number;
-  charge: number; 
+  x: number; y: number; z: number;
+  hue: number; speed?: number;
+  theta?: number; phi?: number;
+  friction?: number; gravity?: number;
+  resistance?: number; size?: number;
+  decay?: number; behavior?: ParticleBehavior;
+  originX?: number; originY?: number; originZ?: number;
 }
 
 export interface AppSettings {
   gravity: number;
   friction: number;
-  autoLaunchDelay: number;
+  autoLaunchDelay: number; // 基础随机间隔
   particleCountMultiplier: number;
   explosionSizeMultiplier: number;
   starBlinkSpeed: number;
   trailLength: number;
+  // 新增：嘉年华控制
+  enableAutoCarnival: boolean; // 是否开启自动循环
+  carnivalInterval: number;    // 自动循环间隔(秒)
+}
+
+// 嘉年华配置 (白名单)
+export interface FireworkConfig {
+  enabledShapes: ExplosionType[];
+  enabledAscensions: AscensionType[];
+  enabledColors: ColorStyle[];
+}
+
+// 单发配置 (指定样式)
+export interface ManualConfig {
+  lockedShape: ExplosionType | 'RANDOM';
+  lockedColor: ColorStyle | 'RANDOM';
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   gravity: 0.12,
-  friction: 0.95,
-  autoLaunchDelay: 4000,
-  particleCountMultiplier: 1.2,
-  explosionSizeMultiplier: 1.2,
-  starBlinkSpeed: 0.0008, 
-  trailLength: 15
+  friction: 0.96,
+  autoLaunchDelay: 2000,
+  particleCountMultiplier: 1.0,
+  explosionSizeMultiplier: 1.0,
+  starBlinkSpeed: 0.001,
+  trailLength: 15,
+  enableAutoCarnival: false,
+  carnivalInterval: 5
 };
+
+export const DEFAULT_CONFIG: FireworkConfig = {
+  enabledShapes: Object.values(ExplosionType),
+  enabledAscensions: Object.values(AscensionType),
+  enabledColors: Object.values(ColorStyle)
+};
+
+export const DEFAULT_MANUAL_CONFIG: ManualConfig = {
+  lockedShape: 'RANDOM',
+  lockedColor: 'RANDOM'
+};
+
+// END OF FILE: src/types/index.ts
