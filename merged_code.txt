@@ -1,0 +1,3057 @@
+
+
+// =============================================================================
+// FILE: src\App.tsx
+// =============================================================================
+
+
+import React, { useState, useEffect, useRef } from 'react';
+import { FireworkCanvas, FireworkCanvasHandle } from './components/FireworkCanvas';
+import { SettingsPanel } from './components/ui/SettingsPanel';
+import { HUD } from './components/ui/HUD';
+import { AppSettings, DEFAULT_SETTINGS } from './types';
+
+const STORAGE_KEY = 'celestial_fireworks_v4_settings';
+
+const App: React.FC = () => {
+  const canvasRef = useRef<FireworkCanvasHandle>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && 'gravity' in parsed) {
+          return { ...DEFAULT_SETTINGS, ...parsed };
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load settings from localStorage', e);
+    }
+    return DEFAULT_SETTINGS;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  }, [settings]);
+
+  const updateSetting = (key: keyof AppSettings, value: number) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const randomizeSettings = () => {
+    setSettings({
+      gravity: Number((Math.random() * 0.12 + 0.04).toFixed(3)),
+      friction: Number((0.92 + Math.random() * 0.07).toFixed(3)),
+      autoLaunchDelay: Math.floor(1000 + Math.random() * 6000),
+      particleCountMultiplier: Number((0.6 + Math.random() * 1.6).toFixed(2)),
+      explosionSizeMultiplier: Number((0.6 + Math.random() * 1.6).toFixed(2)),
+      starBlinkSpeed: Number((0.0003 + Math.random() * 0.002).toFixed(5)),
+      trailLength: Math.floor(5 + Math.random() * 30)
+    });
+  };
+
+  return (
+    <div className="relative w-screen h-screen bg-black overflow-hidden font-sans text-white select-none">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.3); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(6, 182, 212, 0.5); }
+      `}</style>
+
+      <HUD />
+
+      {/* 主控按钮 */}
+      <div className="absolute top-10 right-10 z-20 flex flex-col gap-5 items-end">
+        <button 
+          onClick={() => canvasRef.current?.launchCarnival()}
+          className="group relative px-10 py-5 bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 rounded-2xl font-black text-sm tracking-[0.3em] hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-orange-500/40 overflow-hidden border border-white/10"
+        >
+          <span className="relative z-10 flex items-center gap-3">
+            <span className="animate-bounce">🏮</span> 开启盛大嘉年华 🏮
+          </span>
+          <div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
+        </button>
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          className="p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all backdrop-blur-xl shadow-2xl flex items-center gap-2 group"
+        >
+          <SettingsIcon className="w-6 h-6 text-cyan-400 group-hover:rotate-90 transition-transform" />
+          <span className="text-xs font-bold tracking-widest text-cyan-400/80 pr-1">引擎配置</span>
+        </button>
+      </div>
+
+      <FireworkCanvas ref={canvasRef} settings={settings} />
+
+      <SettingsPanel 
+        show={showSettings} 
+        settings={settings} 
+        onClose={() => setShowSettings(false)}
+        onUpdate={updateSetting}
+        onRandomize={randomizeSettings}
+        onReset={() => setSettings(DEFAULT_SETTINGS)}
+      />
+    </div>
+  );
+};
+
+const SettingsIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+export default App;
+
+
+// =============================================================================
+// FILE: src\App3D.tsx
+// =============================================================================
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { FireworkScene3D, FireworkScene3DHandle } from './components/FireworkScene3D';
+import { SettingsPanel } from './components/ui/SettingsPanel';
+import { TimeControlPanel } from './components/ui/TimeControlPanel';
+import { HUD3D } from './components/ui/HUD3D';
+import { AppSettings, DEFAULT_SETTINGS, CameraMode } from './types';
+import { TimeController } from './core/TimeController';
+
+const STORAGE_KEY = 'celestial_fireworks_3d_settings';
+
+const App3D: React.FC = () => {
+  const sceneRef = useRef<FireworkScene3DHandle>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  
+  // Time controller state
+  const [timeController, setTimeController] = useState<TimeController | null>(null);
+  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+  const [stats, setStats] = useState({ particles: 0, fireworks: 0, fps: 0 });
+  
+  // Settings state
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && 'gravity' in parsed) {
+          return { ...DEFAULT_SETTINGS, ...parsed };
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load settings from localStorage', e);
+    }
+    return DEFAULT_SETTINGS;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  }, [settings]);
+
+  const updateSetting = (key: keyof AppSettings, value: number) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const randomizeSettings = () => {
+    setSettings({
+      gravity: Number((Math.random() * 0.12 + 0.04).toFixed(3)),
+      friction: Number((0.92 + Math.random() * 0.07).toFixed(3)),
+      autoLaunchDelay: Math.floor(1000 + Math.random() * 6000),
+      particleCountMultiplier: Number((0.6 + Math.random() * 1.6).toFixed(2)),
+      explosionSizeMultiplier: Number((0.6 + Math.random() * 1.6).toFixed(2)),
+      starBlinkSpeed: Number((0.0003 + Math.random() * 0.002).toFixed(5)),
+      trailLength: Math.floor(5 + Math.random() * 30)
+    });
+  };
+
+  // Time control handlers
+  const handleTimeUpdate = useCallback((tc: TimeController) => {
+    setTimeController(tc);
+  }, []);
+
+  const handleStatsUpdate = useCallback((newStats: { particles: number; fireworks: number; fps: number }) => {
+    setStats(newStats);
+  }, []);
+
+  const handleTimeScaleChange = (scale: number) => {
+    sceneRef.current?.getTimeController()?.timeScale === scale;
+    const tc = sceneRef.current?.getTimeController();
+    if (tc) {
+      tc.timeScale = scale;
+    }
+  };
+
+  const handleTogglePause = () => {
+    sceneRef.current?.getTimeController()?.togglePause();
+  };
+
+  const handleCameraModeChange = (mode: CameraMode) => {
+    setCameraMode(mode);
+    sceneRef.current?.setCameraMode(mode);
+  };
+
+  return (
+    <div className="relative w-screen h-screen bg-black overflow-hidden font-sans text-white select-none">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.3); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.5); }
+        
+        input[type="range"]::-webkit-slider-thumb {
+          appearance: none;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #06b6d4, #a855f7);
+          cursor: pointer;
+          box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #06b6d4, #a855f7);
+          cursor: pointer;
+          border: none;
+        }
+      `}</style>
+
+      <HUD3D />
+
+      {/* 主控按钮 */}
+      <div className="absolute top-10 right-10 z-20 flex flex-col gap-5 items-end">
+        <button 
+          onClick={() => sceneRef.current?.launchCarnival()}
+          className="group relative px-10 py-5 bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-2xl font-black text-sm tracking-[0.3em] hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-purple-500/40 overflow-hidden border border-white/10"
+        >
+          <span className="relative z-10 flex items-center gap-3">
+            <span className="animate-bounce">🎆</span> 开启 3D 嘉年华 🎆
+          </span>
+          <div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
+        </button>
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          className="p-4 bg-white/5 hover:bg-white/15 rounded-2xl border border-white/10 transition-all backdrop-blur-xl shadow-2xl flex items-center gap-2 group"
+        >
+          <SettingsIcon className="w-6 h-6 text-purple-400 group-hover:rotate-90 transition-transform" />
+          <span className="text-xs font-bold tracking-widest text-purple-400/80 pr-1">引擎配置</span>
+        </button>
+      </div>
+
+      {/* 3D Scene */}
+      <FireworkScene3D 
+        ref={sceneRef} 
+        settings={settings}
+        onTimeUpdate={handleTimeUpdate}
+        onStatsUpdate={handleStatsUpdate}
+      />
+
+      {/* Time Control Panel */}
+      <TimeControlPanel
+        timeController={timeController}
+        cameraMode={cameraMode}
+        stats={stats}
+        onCameraModeChange={handleCameraModeChange}
+        onTimeScaleChange={handleTimeScaleChange}
+        onTogglePause={handleTogglePause}
+      />
+
+      {/* Settings Panel */}
+      <SettingsPanel 
+        show={showSettings} 
+        settings={settings} 
+        onClose={() => setShowSettings(false)}
+        onUpdate={updateSetting}
+        onRandomize={randomizeSettings}
+        onReset={() => setSettings(DEFAULT_SETTINGS)}
+      />
+    </div>
+  );
+};
+
+const SettingsIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+export default App3D;
+
+
+// =============================================================================
+// FILE: src\components\FireworkCanvas.tsx
+// =============================================================================
+
+
+import React, { useEffect, useRef, useState, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { ParticlePool } from '../core/ParticlePool';
+import { Firework } from '../core/Firework';
+import { AppSettings } from '../types';
+
+interface Star {
+  x: number;
+  y: number;
+  size: number;
+  blinkSpeed: number;
+  phase: number;
+  layer: number;
+}
+
+interface FireworkCanvasProps {
+  settings: AppSettings;
+}
+
+export interface FireworkCanvasHandle {
+  launchCarnival: () => void;
+}
+
+export const FireworkCanvas = forwardRef<FireworkCanvasHandle, FireworkCanvasProps>(({ settings }, ref) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fireworksRef = useRef<Firework[]>([]);
+  
+  const particlePoolRef = useRef<ParticlePool | null>(null);
+  const sparklersPoolRef = useRef<ParticlePool | null>(null);
+  
+  if (!particlePoolRef.current) particlePoolRef.current = new ParticlePool(15000);
+  if (!sparklersPoolRef.current) sparklersPoolRef.current = new ParticlePool(1000);
+
+  const getParticlePool = () => particlePoolRef.current!;
+  const getSparklersPool = () => sparklersPoolRef.current!;
+
+  const shockwavesRef = useRef<{ x: number, y: number, r: number, a: number }[]>([]);
+  
+  const [isCharging, setIsCharging] = useState(false);
+  const chargeLevelRef = useRef(0);
+  const mousePos = useRef({ x: 0, y: 0 });
+  const requestRef = useRef<number | undefined>(undefined);
+  const lastAutoLaunch = useRef<number>(0);
+
+  const stars = useMemo<Star[]>(() => {
+    const s: Star[] = [];
+    for (let i = 0; i < 400; i++) {
+      s.push({
+        x: Math.random() * 4000, 
+        y: Math.random() * 3000,
+        size: Math.random() * 1.2,
+        blinkSpeed: (0.002 + Math.random() * 0.008) * (settings.starBlinkSpeed / 0.0008),
+        phase: Math.random() * Math.PI * 2,
+        layer: Math.floor(Math.random() * 3)
+      });
+    }
+    return s;
+  }, [settings.starBlinkSpeed]);
+
+  const handleResize = useCallback(() => {
+    if (canvasRef.current) {
+      const dpr = window.devicePixelRatio || 1;
+      canvasRef.current.width = window.innerWidth * dpr;
+      canvasRef.current.height = window.innerHeight * dpr;
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, [handleResize]);
+
+  const launchFireworkAt = (x: number, y: number, hue?: number, charge?: number) => {
+    const startXVariation = (Math.random() - 0.5) * 100;
+    const startX = Math.max(0, Math.min(window.innerWidth, x + startXVariation));
+    
+    fireworksRef.current.push(new Firework({
+      startX,
+      targetX: x,
+      targetY: y,
+      hue: hue ?? Math.random() * 360,
+      charge: charge ?? 0.2 + Math.random() * 0.5
+    }, settings));
+  };
+
+  useImperativeHandle(ref, () => ({
+    launchCarnival: () => {
+      const launch = (count: number, delay: number) => {
+        for (let i = 0; i < count; i++) {
+          setTimeout(() => {
+            const x = (window.innerWidth * 0.1) + (window.innerWidth * 0.8 * Math.random());
+            const y = window.innerHeight * (0.1 + Math.random() * 0.4);
+            launchFireworkAt(x, y, Math.random() * 360, 0.4 + Math.random() * 0.4);
+          }, delay + i * 180);
+        }
+      };
+      launch(8, 0); 
+      launch(12, 1200);
+    }
+  }));
+
+  const animate = useCallback((time: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    if (!ctx) return;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#020205';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    ctx.fillStyle = '#fff';
+    const oxB = (mousePos.current.x - window.innerWidth/2) * 0.005;
+    const oyB = (mousePos.current.y - window.innerHeight/2) * 0.005;
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      const opacity = 0.05 + Math.abs(Math.sin(time * s.blinkSpeed + s.phase)) * 0.6;
+      ctx.globalAlpha = opacity;
+      ctx.beginPath();
+      ctx.arc((s.x + oxB * s.layer) % window.innerWidth, (s.y + oyB * s.layer) % window.innerHeight, s.size, 0, 6.28);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    if (time - lastAutoLaunch.current > settings.autoLaunchDelay && !isCharging) {
+      launchFireworkAt(Math.random() * window.innerWidth, 50 + Math.random() * (window.innerHeight * 0.4));
+      lastAutoLaunch.current = time;
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+    getSparklersPool().updateAndDraw(ctx);
+
+    for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
+      const f = fireworksRef.current[i];
+      f.update(settings);
+      f.draw(ctx);
+      if (f.exploded) {
+        f.createExplosion(settings, (opts) => getParticlePool().get(opts));
+        if (f.charge > 0.5) {
+          shockwavesRef.current.push({ x: f.pos.x, y: f.pos.y, r: 0, a: 0.25 });
+        }
+        fireworksRef.current.splice(i, 1);
+      }
+    }
+
+    getParticlePool().updateAndDraw(ctx);
+
+    for (let i = shockwavesRef.current.length - 1; i >= 0; i--) {
+      const sw = shockwavesRef.current[i];
+      sw.r += 16; sw.a -= 0.01;
+      ctx.globalAlpha = sw.a;
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.r, 0, 6.28);
+      ctx.stroke();
+      if (sw.a <= 0) shockwavesRef.current.splice(i, 1);
+    }
+
+    ctx.globalAlpha = 1;
+
+    if (isCharging) {
+      const increment = 0.025 * (1 - chargeLevelRef.current * 0.4);
+      chargeLevelRef.current = Math.min(chargeLevelRef.current + increment, 1);
+      
+      const { x, y } = mousePos.current;
+      const hue = (x / window.innerWidth) * 360;
+      
+      ctx.save();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${0.4 + chargeLevelRef.current * 0.4})`;
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.arc(x, y, 40 + chargeLevelRef.current * 100, time * 0.003, time * 0.003 + 6.28);
+      ctx.stroke();
+      
+      if (Math.random() > 0.5) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 100 + Math.random() * 50;
+        getSparklersPool().get({
+          x: x + Math.cos(ang) * dist,
+          y: y + Math.sin(ang) * dist,
+          hue: (hue + 40) % 360,
+          speed: -4 - chargeLevelRef.current * 4,
+          angle: ang,
+          size: 1,
+          decay: 0.1,
+          behavior: 'glitter'
+        });
+      }
+
+      ctx.fillStyle = `hsla(${hue}, 100%, 70%, ${0.1 + chargeLevelRef.current * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(x, y, chargeLevelRef.current * 50, 0, 6.28);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    requestRef.current = requestAnimationFrame(animate);
+  }, [isCharging, stars, settings]);
+
+  useEffect(() => {
+    requestRef.current = requestAnimationFrame(animate);
+    return () => { if (requestRef.current) cancelAnimationFrame(requestRef.current); };
+  }, [animate]);
+
+  const updateMousePos = (e: React.MouseEvent | React.TouchEvent) => {
+    const x = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+    const y = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+    mousePos.current = { x, y };
+    
+    if (Math.random() > 0.8) {
+      getSparklersPool().get({
+        x, y,
+        hue: (performance.now() / 15) % 360,
+        speed: Math.random() * 2,
+        size: 0.7,
+        decay: 0.06
+      });
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+    setIsCharging(true);
+    chargeLevelRef.current = 0;
+    updateMousePos(e);
+  };
+
+  const handleMouseUp = () => {
+    if (!isCharging) return;
+    const xRatio = mousePos.current.x / window.innerWidth;
+    const h = xRatio < 0.5 ? 170 + xRatio * 180 : (xRatio - 0.5) * 120;
+    launchFireworkAt(mousePos.current.x, mousePos.current.y, h, chargeLevelRef.current + 0.1);
+    setIsCharging(false);
+    chargeLevelRef.current = 0;
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseMove={updateMousePos}
+      onTouchStart={handleMouseDown}
+      onTouchEnd={handleMouseUp}
+      onTouchMove={updateMousePos}
+      className="cursor-crosshair w-full h-full block touch-none"
+    />
+  );
+});
+
+
+// =============================================================================
+// FILE: src\components\FireworkScene3D.tsx
+// =============================================================================
+
+import React, { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import * as THREE from 'three';
+import { ParticlePool3D } from '../core/ParticlePool3D';
+import { Firework3D, Firework3DOptions } from '../core/Firework3D';
+import { TimeController } from '../core/TimeController';
+import { AppSettings, CameraMode } from '../types';
+
+interface FireworkScene3DProps {
+  settings: AppSettings;
+  onTimeUpdate?: (timeController: TimeController) => void;
+  onStatsUpdate?: (stats: { particles: number; fireworks: number; fps: number }) => void;
+}
+
+export interface FireworkScene3DHandle {
+  launchCarnival: () => void;
+  launchAt: (x: number, y: number, z: number) => void;
+  getTimeController: () => TimeController;
+  setCameraMode: (mode: CameraMode) => void;
+}
+
+export const FireworkScene3D = forwardRef<FireworkScene3DHandle, FireworkScene3DProps>(
+  ({ settings, onTimeUpdate, onStatsUpdate }, ref) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const sceneRef = useRef<THREE.Scene | null>(null);
+    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+    const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+    const requestRef = useRef<number | undefined>(undefined);
+
+    // 3D objects
+    const fireworksRef = useRef<Firework3D[]>([]);
+    const particlePoolRef = useRef<ParticlePool3D | null>(null);
+    const timeControllerRef = useRef<TimeController>(new TimeController());
+
+    // Particle system
+    const particleGeometryRef = useRef<THREE.BufferGeometry | null>(null);
+    const particleMaterialRef = useRef<THREE.PointsMaterial | null>(null);
+    const particlePointsRef = useRef<THREE.Points | null>(null);
+
+    // Firework trail system
+    const trailGeometryRef = useRef<THREE.BufferGeometry | null>(null);
+    const trailMaterialRef = useRef<THREE.LineBasicMaterial | null>(null);
+    const trailLinesRef = useRef<THREE.LineSegments | null>(null);
+
+    // Stars
+    const starsRef = useRef<THREE.Points | null>(null);
+
+    // Ground grid
+    const groundRef = useRef<THREE.Mesh | null>(null);
+
+    // Camera control
+    const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+    const cameraModeRef = useRef<CameraMode>('orbit');
+    
+    // Orbit control state
+    const orbitRef = useRef({
+      theta: 0,
+      phi: Math.PI / 3,
+      distance: 500,
+      target: new THREE.Vector3(0, 150, 0),
+      isDragging: false,
+      lastMouseX: 0,
+      lastMouseY: 0
+    });
+
+    // First person control state
+    const firstPersonRef = useRef({
+      position: new THREE.Vector3(0, 50, 300),
+      rotation: new THREE.Euler(0, 0, 0),
+      yaw: 0,
+      pitch: 0,
+      moveForward: false,
+      moveBackward: false,
+      moveLeft: false,
+      moveRight: false,
+      moveUp: false,
+      moveDown: false,
+      isLocked: false,
+      speed: 5
+    });
+
+    // Auto launch timer
+    const lastAutoLaunchRef = useRef<number>(0);
+    const fpsRef = useRef({ frames: 0, lastTime: 0, fps: 0 });
+
+    // Charging state
+    const [isCharging, setIsCharging] = useState(false);
+    const chargeLevelRef = useRef(0);
+    const mousePos3DRef = useRef({ x: 0, y: 150, z: 0 });
+
+    // Initialize scene
+    useEffect(() => {
+      if (!containerRef.current) return;
+
+      // Scene
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x020205);
+      scene.fog = new THREE.Fog(0x020205, 500, 2500);
+      sceneRef.current = scene;
+
+      // Camera
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        1,
+        5000
+      );
+      camera.position.set(0, 200, 500);
+      camera.lookAt(0, 150, 0);
+      cameraRef.current = camera;
+
+      // Renderer
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: false,
+        powerPreference: 'high-performance'
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.5;
+      containerRef.current.appendChild(renderer.domElement);
+      rendererRef.current = renderer;
+
+      // Initialize particle pool
+      particlePoolRef.current = new ParticlePool3D(20000);
+
+      // Create particle geometry
+      const particleGeometry = new THREE.BufferGeometry();
+      const maxParticles = 20000;
+      const positions = new Float32Array(maxParticles * 3);
+      const colors = new Float32Array(maxParticles * 3);
+      const sizes = new Float32Array(maxParticles);
+      const alphas = new Float32Array(maxParticles);
+
+      particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particleGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+      particleGeometryRef.current = particleGeometry;
+
+      // Particle material with custom shader
+      const particleMaterial = new THREE.PointsMaterial({
+        size: 8,  // Increased for better visibility
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: true
+      });
+      particleMaterialRef.current = particleMaterial;
+
+      const particlePoints = new THREE.Points(particleGeometry, particleMaterial);
+      particlePoints.frustumCulled = false;
+      scene.add(particlePoints);
+      particlePointsRef.current = particlePoints;
+
+      // Create trail geometry for fireworks
+      const trailGeometry = new THREE.BufferGeometry();
+      const trailPositions = new Float32Array(1000 * 6); // 1000 segments, 2 points each
+      const trailColors = new Float32Array(1000 * 6);
+      trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+      trailGeometry.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+      trailGeometryRef.current = trailGeometry;
+
+      const trailMaterial = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      trailMaterialRef.current = trailMaterial;
+
+      const trailLines = new THREE.LineSegments(trailGeometry, trailMaterial);
+      scene.add(trailLines);
+      trailLinesRef.current = trailLines;
+
+      // Create stars
+      createStars(scene);
+
+      // Create ground
+      createGround(scene);
+
+      // Add ambient light
+      const ambientLight = new THREE.AmbientLight(0x111122, 0.5);
+      scene.add(ambientLight);
+
+      console.log('🎆 3D Scene initialized successfully!');
+      console.log('📍 Camera at:', camera.position);
+      console.log('🌌 Scene children:', scene.children.length);
+
+      // Handle resize
+      const handleResize = () => {
+        if (!cameraRef.current || !rendererRef.current) return;
+        cameraRef.current.aspect = window.innerWidth / window.innerHeight;
+        cameraRef.current.updateProjectionMatrix();
+        rendererRef.current.setSize(window.innerWidth, window.innerHeight);
+      };
+      window.addEventListener('resize', handleResize);
+
+      // Keyboard controls
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (cameraModeRef.current === 'firstPerson') {
+          const fp = firstPersonRef.current;
+          switch (e.code) {
+            case 'KeyW': fp.moveForward = true; break;
+            case 'KeyS': fp.moveBackward = true; break;
+            case 'KeyA': fp.moveLeft = true; break;
+            case 'KeyD': fp.moveRight = true; break;
+            case 'Space': fp.moveUp = true; e.preventDefault(); break;
+            case 'ShiftLeft': fp.moveDown = true; break;
+          }
+        }
+        // Time controls
+        switch (e.code) {
+          case 'KeyP': timeControllerRef.current.togglePause(); break;
+          case 'BracketLeft': timeControllerRef.current.slowDown(); break;
+          case 'BracketRight': timeControllerRef.current.speedUp(); break;
+          case 'Digit1': timeControllerRef.current.setSlowMotion(); break;
+          case 'Digit2': timeControllerRef.current.setNormal(); break;
+          case 'Digit3': timeControllerRef.current.setFast(); break;
+          case 'KeyC': 
+            const newMode = cameraModeRef.current === 'orbit' ? 'firstPerson' : 'orbit';
+            setCameraMode(newMode);
+            cameraModeRef.current = newMode;
+            break;
+        }
+      };
+
+      const handleKeyUp = (e: KeyboardEvent) => {
+        if (cameraModeRef.current === 'firstPerson') {
+          const fp = firstPersonRef.current;
+          switch (e.code) {
+            case 'KeyW': fp.moveForward = false; break;
+            case 'KeyS': fp.moveBackward = false; break;
+            case 'KeyA': fp.moveLeft = false; break;
+            case 'KeyD': fp.moveRight = false; break;
+            case 'Space': fp.moveUp = false; break;
+            case 'ShiftLeft': fp.moveDown = false; break;
+          }
+        }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        renderer.dispose();
+        containerRef.current?.removeChild(renderer.domElement);
+      };
+    }, []);
+
+    // Create starfield
+    const createStars = (scene: THREE.Scene) => {
+      const starGeometry = new THREE.BufferGeometry();
+      const starCount = 2000;
+      const positions = new Float32Array(starCount * 3);
+      const colors = new Float32Array(starCount * 3);
+      const sizes = new Float32Array(starCount);
+
+      for (let i = 0; i < starCount; i++) {
+        const i3 = i * 3;
+        // Distribute stars in a large sphere
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 1500 + Math.random() * 1000;
+
+        positions[i3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i3 + 1] = Math.abs(r * Math.cos(phi)); // Only upper hemisphere
+        positions[i3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+
+        // Slight color variation
+        const tint = 0.8 + Math.random() * 0.2;
+        colors[i3] = tint;
+        colors[i3 + 1] = tint;
+        colors[i3 + 2] = tint * (0.9 + Math.random() * 0.1);
+
+        sizes[i] = Math.random() * 2 + 0.5;
+      }
+
+      starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+      const starMaterial = new THREE.PointsMaterial({
+        size: 2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        sizeAttenuation: false
+      });
+
+      const stars = new THREE.Points(starGeometry, starMaterial);
+      scene.add(stars);
+      starsRef.current = stars;
+    };
+
+    // Create ground plane
+    const createGround = (scene: THREE.Scene) => {
+      // Grid helper
+      const gridHelper = new THREE.GridHelper(2000, 100, 0x0a1628, 0x061218);
+      gridHelper.position.y = 0;
+      scene.add(gridHelper);
+
+      // Ground plane with glow
+      const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
+      const groundMaterial = new THREE.MeshBasicMaterial({
+        color: 0x020208,
+        transparent: true,
+        opacity: 0.8
+      });
+      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -1;
+      scene.add(ground);
+      groundRef.current = ground;
+
+      // Horizon glow
+      const horizonGeometry = new THREE.PlaneGeometry(3000, 500);
+      const horizonMaterial = new THREE.MeshBasicMaterial({
+        color: 0x1a1a3a,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      });
+      const horizon = new THREE.Mesh(horizonGeometry, horizonMaterial);
+      horizon.position.set(0, 100, -1000);
+      scene.add(horizon);
+    };
+
+    // Launch firework
+    const launchFireworkAt = useCallback((x: number, y: number, z: number, hue?: number, charge?: number) => {
+      const startX = x + (Math.random() - 0.5) * 50;
+      const startZ = z + (Math.random() - 0.5) * 50;
+
+      fireworksRef.current.push(new Firework3D({
+        startX,
+        startZ,
+        targetX: x,
+        targetY: y,
+        targetZ: z,
+        hue: hue ?? Math.random() * 360,
+        charge: charge ?? 0.2 + Math.random() * 0.5
+      }, settings));
+    }, [settings]);
+
+    // Expose methods
+    useImperativeHandle(ref, () => ({
+      launchCarnival: () => {
+        const launchWave = (count: number, delay: number) => {
+          for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+              const x = (Math.random() - 0.5) * 600;
+              const y = 150 + Math.random() * 200;
+              const z = (Math.random() - 0.5) * 600;
+              launchFireworkAt(x, y, z, Math.random() * 360, 0.4 + Math.random() * 0.4);
+            }, delay + i * 180);
+          }
+        };
+        launchWave(8, 0);
+        launchWave(12, 1200);
+        launchWave(10, 2400);
+      },
+      launchAt: launchFireworkAt,
+      getTimeController: () => timeControllerRef.current,
+      setCameraMode: (mode: CameraMode) => {
+        setCameraMode(mode);
+        cameraModeRef.current = mode;
+      }
+    }));
+
+    // Mouse handlers
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+      if (cameraModeRef.current === 'orbit') {
+        if (e.button === 2 || e.button === 1) {
+          // Right or middle click - start orbit
+          orbitRef.current.isDragging = true;
+          orbitRef.current.lastMouseX = e.clientX;
+          orbitRef.current.lastMouseY = e.clientY;
+        } else if (e.button === 0) {
+          // Left click - start charging
+          setIsCharging(true);
+          chargeLevelRef.current = 0;
+        }
+      }
+    }, []);
+
+    const handleMouseUp = useCallback((e: React.MouseEvent) => {
+      if (orbitRef.current.isDragging) {
+        orbitRef.current.isDragging = false;
+      }
+      if (isCharging && e.button === 0) {
+        // Launch firework at calculated position
+        const { x, y, z } = mousePos3DRef.current;
+        launchFireworkAt(x, y, z, undefined, chargeLevelRef.current + 0.1);
+        setIsCharging(false);
+        chargeLevelRef.current = 0;
+      }
+    }, [isCharging, launchFireworkAt]);
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+      if (cameraModeRef.current === 'orbit') {
+        if (orbitRef.current.isDragging) {
+          const deltaX = e.clientX - orbitRef.current.lastMouseX;
+          const deltaY = e.clientY - orbitRef.current.lastMouseY;
+          
+          orbitRef.current.theta -= deltaX * 0.005;
+          orbitRef.current.phi = Math.max(0.1, Math.min(Math.PI - 0.1, orbitRef.current.phi + deltaY * 0.005));
+          
+          orbitRef.current.lastMouseX = e.clientX;
+          orbitRef.current.lastMouseY = e.clientY;
+        }
+
+        // Calculate 3D position for firework launch
+        if (cameraRef.current) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            const mouse = new THREE.Vector2(
+              ((e.clientX - rect.left) / rect.width) * 2 - 1,
+              -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+            
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, cameraRef.current);
+            
+            // Intersect with a plane at y = 150 (typical explosion height)
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -150);
+            const intersection = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersection);
+            
+            if (intersection) {
+              mousePos3DRef.current = { x: intersection.x, y: 150, z: intersection.z };
+            }
+          }
+        }
+      } else if (cameraModeRef.current === 'firstPerson' && firstPersonRef.current.isLocked) {
+        firstPersonRef.current.yaw -= e.movementX * 0.002;
+        firstPersonRef.current.pitch = Math.max(
+          -Math.PI / 2 + 0.1,
+          Math.min(Math.PI / 2 - 0.1, firstPersonRef.current.pitch - e.movementY * 0.002)
+        );
+      }
+    }, []);
+
+    const handleWheel = useCallback((e: React.WheelEvent) => {
+      if (cameraModeRef.current === 'orbit') {
+        orbitRef.current.distance = Math.max(100, Math.min(2000, orbitRef.current.distance + e.deltaY * 0.5));
+      } else {
+        firstPersonRef.current.speed = Math.max(1, Math.min(20, firstPersonRef.current.speed - e.deltaY * 0.01));
+      }
+    }, []);
+
+    const handleClick = useCallback((e: React.MouseEvent) => {
+      if (cameraModeRef.current === 'firstPerson') {
+        containerRef.current?.requestPointerLock();
+        firstPersonRef.current.isLocked = true;
+      }
+    }, []);
+
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+      e.preventDefault();
+    }, []);
+
+    // Animation loop
+    useEffect(() => {
+      const animate = () => {
+        requestRef.current = requestAnimationFrame(animate);
+
+        const timeController = timeControllerRef.current;
+        timeController.update();
+        const deltaTime = timeController.deltaTime;
+
+        // Update FPS
+        fpsRef.current.frames++;
+        const now = performance.now();
+        if (now - fpsRef.current.lastTime >= 1000) {
+          fpsRef.current.fps = fpsRef.current.frames;
+          fpsRef.current.frames = 0;
+          fpsRef.current.lastTime = now;
+        }
+
+        if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
+
+        // Update camera
+        updateCamera(deltaTime);
+
+        // Auto launch
+        if (!timeController.isPaused) {
+          const virtualTime = timeController.virtualTime * 1000;
+          if (virtualTime - lastAutoLaunchRef.current > settings.autoLaunchDelay) {
+            const x = (Math.random() - 0.5) * 400;
+            const y = 100 + Math.random() * 200;
+            const z = (Math.random() - 0.5) * 400;
+            launchFireworkAt(x, y, z);
+            lastAutoLaunchRef.current = virtualTime;
+          }
+        }
+
+        // Update charging
+        if (isCharging) {
+          chargeLevelRef.current = Math.min(1, chargeLevelRef.current + 0.02 * (1 - chargeLevelRef.current * 0.4));
+        }
+
+        // Update fireworks
+        for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
+          const fw = fireworksRef.current[i];
+          fw.update(settings, deltaTime);
+
+          if (fw.exploded) {
+            fw.createExplosion(settings, (opts) => particlePoolRef.current!.get(opts));
+            fireworksRef.current.splice(i, 1);
+          }
+        }
+
+        // Update particles
+        particlePoolRef.current?.update(deltaTime);
+
+        // Update particle geometry
+        updateParticleGeometry();
+
+        // Update firework trail geometry
+        updateTrailGeometry();
+
+        // Update stars twinkling
+        updateStars(timeController.virtualTime);
+
+        // Render
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+
+        // Callbacks
+        if (onTimeUpdate) onTimeUpdate(timeController);
+        if (onStatsUpdate) {
+          onStatsUpdate({
+            particles: particlePoolRef.current?.activeCount ?? 0,
+            fireworks: fireworksRef.current.length,
+            fps: fpsRef.current.fps
+          });
+        }
+      };
+
+      requestRef.current = requestAnimationFrame(animate);
+      return () => {
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      };
+    }, [settings, isCharging, launchFireworkAt, onTimeUpdate, onStatsUpdate]);
+
+    // Update camera position
+    const updateCamera = (deltaTime: number) => {
+      if (!cameraRef.current) return;
+
+      if (cameraModeRef.current === 'orbit') {
+        const orbit = orbitRef.current;
+        cameraRef.current.position.set(
+          orbit.target.x + orbit.distance * Math.sin(orbit.phi) * Math.cos(orbit.theta),
+          orbit.target.y + orbit.distance * Math.cos(orbit.phi),
+          orbit.target.z + orbit.distance * Math.sin(orbit.phi) * Math.sin(orbit.theta)
+        );
+        cameraRef.current.lookAt(orbit.target);
+      } else {
+        const fp = firstPersonRef.current;
+        const speed = fp.speed * deltaTime * 60;
+        
+        // Calculate movement direction
+        const direction = new THREE.Vector3();
+        const forward = new THREE.Vector3(
+          Math.sin(fp.yaw),
+          0,
+          Math.cos(fp.yaw)
+        );
+        const right = new THREE.Vector3(
+          Math.cos(fp.yaw),
+          0,
+          -Math.sin(fp.yaw)
+        );
+
+        if (fp.moveForward) direction.add(forward);
+        if (fp.moveBackward) direction.sub(forward);
+        if (fp.moveRight) direction.add(right);
+        if (fp.moveLeft) direction.sub(right);
+        if (fp.moveUp) direction.y += 1;
+        if (fp.moveDown) direction.y -= 1;
+
+        direction.normalize().multiplyScalar(speed);
+        fp.position.add(direction);
+
+        // Keep above ground
+        fp.position.y = Math.max(10, fp.position.y);
+
+        cameraRef.current.position.copy(fp.position);
+        cameraRef.current.rotation.set(fp.pitch, fp.yaw, 0, 'YXZ');
+      }
+    };
+
+    // Update particle buffer geometry
+    const updateParticleGeometry = () => {
+      if (!particleGeometryRef.current || !particlePoolRef.current) return;
+
+      const particles = particlePoolRef.current.getActiveParticles();
+      const positions = particleGeometryRef.current.attributes.position.array as Float32Array;
+      const colors = particleGeometryRef.current.attributes.color.array as Float32Array;
+      const sizes = particleGeometryRef.current.attributes.size.array as Float32Array;
+
+      for (let i = 0; i < particles.length && i < 20000; i++) {
+        const p = particles[i];
+        const i3 = i * 3;
+
+        positions[i3] = p.position.x;
+        positions[i3 + 1] = p.position.y;
+        positions[i3 + 2] = p.position.z;
+
+        const color = p.getColor();
+        colors[i3] = color.r * p.alpha;
+        colors[i3 + 1] = color.g * p.alpha;
+        colors[i3 + 2] = color.b * p.alpha;
+
+        let size = p.size * (p.behavior === 'glitter' && p.twinkleFactor > 0.5 ? 0.3 : 1);
+        sizes[i] = size;
+      }
+
+      // Zero out unused particles
+      for (let i = particles.length; i < 20000; i++) {
+        const i3 = i * 3;
+        positions[i3] = 0;
+        positions[i3 + 1] = -1000;
+        positions[i3 + 2] = 0;
+        colors[i3] = 0;
+        colors[i3 + 1] = 0;
+        colors[i3 + 2] = 0;
+        sizes[i] = 0;
+      }
+
+      particleGeometryRef.current.attributes.position.needsUpdate = true;
+      particleGeometryRef.current.attributes.color.needsUpdate = true;
+      particleGeometryRef.current.attributes.size.needsUpdate = true;
+    };
+
+    // Update firework trails
+    const updateTrailGeometry = () => {
+      if (!trailGeometryRef.current) return;
+
+      const positions = trailGeometryRef.current.attributes.position.array as Float32Array;
+      const colors = trailGeometryRef.current.attributes.color.array as Float32Array;
+
+      let segmentIndex = 0;
+
+      for (const fw of fireworksRef.current) {
+        const fwColor = fw.getColor();
+
+        for (let i = 1; i < fw.trail.length && segmentIndex < 1000; i++) {
+          const i6 = segmentIndex * 6;
+          const prev = fw.trail[i - 1];
+          const curr = fw.trail[i];
+
+          const alpha = i / fw.trail.length;
+
+          positions[i6] = prev.x;
+          positions[i6 + 1] = prev.y;
+          positions[i6 + 2] = prev.z;
+          positions[i6 + 3] = curr.x;
+          positions[i6 + 4] = curr.y;
+          positions[i6 + 5] = curr.z;
+
+          colors[i6] = fwColor.r * alpha * 0.5;
+          colors[i6 + 1] = fwColor.g * alpha * 0.5;
+          colors[i6 + 2] = fwColor.b * alpha * 0.5;
+          colors[i6 + 3] = fwColor.r * alpha;
+          colors[i6 + 4] = fwColor.g * alpha;
+          colors[i6 + 5] = fwColor.b * alpha;
+
+          segmentIndex++;
+        }
+      }
+
+      // Zero out unused segments
+      for (let i = segmentIndex; i < 1000; i++) {
+        const i6 = i * 6;
+        for (let j = 0; j < 6; j++) {
+          positions[i6 + j] = 0;
+          colors[i6 + j] = 0;
+        }
+      }
+
+      trailGeometryRef.current.attributes.position.needsUpdate = true;
+      trailGeometryRef.current.attributes.color.needsUpdate = true;
+    };
+
+    // Update stars twinkling
+    const updateStars = (time: number) => {
+      if (!starsRef.current) return;
+
+      const geometry = starsRef.current.geometry;
+      const colors = geometry.attributes.color.array as Float32Array;
+
+      for (let i = 0; i < colors.length / 3; i++) {
+        const i3 = i * 3;
+        const twinkle = 0.5 + Math.sin(time * (0.5 + i * 0.001) + i) * 0.5;
+        const base = 0.6 + twinkle * 0.4;
+        colors[i3] = base;
+        colors[i3 + 1] = base;
+        colors[i3 + 2] = base * 0.95;
+      }
+
+      geometry.attributes.color.needsUpdate = true;
+    };
+
+    return (
+      <div
+        ref={containerRef}
+        className="w-full h-full cursor-crosshair"
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+      />
+    );
+  }
+);
+
+
+// =============================================================================
+// FILE: src\components\ui\HUD.tsx
+// =============================================================================
+
+
+import React from 'react';
+
+export const HUD: React.FC = () => {
+  return (
+    <>
+      {/* 头部信息 */}
+      <div className="absolute top-10 left-10 z-10 pointer-events-none">
+        <div className="flex items-center gap-4 mb-2">
+          <div className="w-1.5 h-12 bg-cyan-500 rounded-full shadow-[0_0_20px_rgba(6,182,212,1)] animate-pulse"></div>
+          <div>
+            <h1 className="text-5xl font-black tracking-tighter italic leading-none">
+              璀璨<span className="text-cyan-400">星辰</span> V4
+            </h1>
+            <p className="text-[10px] text-cyan-500/50 tracking-[0.5em] font-bold uppercase mt-1">
+              Deep Space Particle System • Pro Edition
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 底部浮标 */}
+      <footer className="absolute bottom-10 left-0 right-0 flex justify-center items-center gap-12 pointer-events-none opacity-20">
+        <div className="h-[1px] w-40 bg-gradient-to-r from-transparent via-white/40 to-transparent"></div>
+        <div className="text-[10px] text-white uppercase tracking-[1em] font-light flex gap-8">
+          <span>行星</span><span>蒲公英</span><span>萤火虫</span><span>土星环</span><span>星芒</span><span>波浪</span>
+        </div>
+        <div className="h-[1px] w-40 bg-gradient-to-l from-transparent via-white/40 to-transparent"></div>
+      </footer>
+
+      {/* 互动提示 */}
+      <div className="absolute bottom-10 left-10 text-[9px] text-white/30 tracking-[0.2em] font-medium pointer-events-none space-y-1">
+        <p>• 点击/触摸发射</p>
+        <p>• 长按蓄力大招</p>
+        <p>• 移动鼠标产生星尘</p>
+      </div>
+
+      <div className="absolute inset-0 bg-gradient-to-t from-cyan-950/20 via-transparent to-transparent pointer-events-none"></div>
+    </>
+  );
+};
+
+
+// =============================================================================
+// FILE: src\components\ui\HUD3D.tsx
+// =============================================================================
+
+import React from 'react';
+
+interface HUD3DProps {
+  is3D?: boolean;
+}
+
+export const HUD3D: React.FC<HUD3DProps> = ({ is3D = true }) => {
+  return (
+    <>
+      {/* 头部信息 */}
+      <div className="absolute top-10 left-10 z-10 pointer-events-none">
+        <div className="flex items-center gap-4 mb-2">
+          <div className="w-1.5 h-12 bg-gradient-to-b from-cyan-400 via-purple-500 to-pink-500 rounded-full shadow-[0_0_20px_rgba(168,85,247,0.8)] animate-pulse"></div>
+          <div>
+            <h1 className="text-5xl font-black tracking-tighter italic leading-none">
+              璀璨<span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">星辰</span> 
+              <span className="text-2xl ml-2 text-purple-400">3D</span>
+            </h1>
+            <p className="text-[10px] text-cyan-500/50 tracking-[0.5em] font-bold uppercase mt-1">
+              3D Deep Space • Immersive Experience • Time Control
+            </p>
+          </div>
+        </div>
+        
+        {/* 3D Badge */}
+        {is3D && (
+          <div className="mt-4 flex items-center gap-2">
+            <div className="px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-pink-600/30 rounded-lg border border-purple-500/30 backdrop-blur-sm">
+              <span className="text-[10px] font-bold text-purple-300 tracking-wider">🌌 三维宇宙模式</span>
+            </div>
+            <div className="px-3 py-1.5 bg-cyan-600/20 rounded-lg border border-cyan-500/30 backdrop-blur-sm">
+              <span className="text-[10px] font-bold text-cyan-300 tracking-wider">⏱ 时间可控</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 右下互动提示 */}
+      <div className="absolute bottom-10 right-10 text-[9px] text-white/30 tracking-[0.15em] font-medium pointer-events-none space-y-1 text-right">
+        <p className="text-cyan-400/50 font-bold mb-2">🎮 控制指南</p>
+        <p>• 左键点击/长按蓄力发射</p>
+        <p>• 右键拖动旋转视角</p>
+        <p>• 滚轮缩放距离</p>
+        <p>• C 切换第一人称</p>
+        <p className="mt-2 text-amber-400/50">⏱ 时间控制</p>
+        <p>• P 暂停/继续</p>
+        <p>• [ ] 减速/加速</p>
+        <p>• 1/2/3 速度预设</p>
+      </div>
+
+      {/* 底部浮标 */}
+      <footer className="absolute bottom-10 left-1/2 -translate-x-1/2 flex justify-center items-center gap-12 pointer-events-none opacity-20">
+        <div className="h-[1px] w-40 bg-gradient-to-r from-transparent via-purple-400/40 to-transparent"></div>
+        <div className="text-[10px] text-white uppercase tracking-[1em] font-light flex gap-8">
+          <span>心形</span><span>星芒</span><span>螺旋</span><span>星系</span><span>彗星</span><span>垂柳</span>
+        </div>
+        <div className="h-[1px] w-40 bg-gradient-to-l from-transparent via-purple-400/40 to-transparent"></div>
+      </footer>
+
+      {/* 渐变遮罩 */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-purple-950/20 via-transparent to-transparent"></div>
+        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/30 via-transparent to-transparent"></div>
+      </div>
+    </>
+  );
+};
+
+
+// =============================================================================
+// FILE: src\components\ui\SettingsPanel.tsx
+// =============================================================================
+
+
+import React from 'react';
+import { AppSettings, DEFAULT_SETTINGS } from '../../types';
+
+interface SettingsPanelProps {
+  show: boolean;
+  settings: AppSettings;
+  onClose: () => void;
+  onUpdate: (key: keyof AppSettings, value: number) => void;
+  onRandomize: () => void;
+  onReset: () => void;
+}
+
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
+  show, settings, onClose, onUpdate, onRandomize, onReset 
+}) => {
+  return (
+    <div className={`absolute top-0 right-0 h-full w-96 bg-[#030307]/95 backdrop-blur-3xl border-l border-white/5 z-40 transform transition-transform duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${show ? 'translate-x-0' : 'translate-x-full shadow-none'}`}>
+      <div className="p-12 h-full flex flex-col gap-10 overflow-y-auto custom-scrollbar">
+        <div className="flex justify-between items-center border-b border-white/5 pb-8">
+          <div>
+            <h2 className="text-2xl font-black tracking-widest text-white">参数中枢</h2>
+            <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">Engine Kernel Controllers</p>
+          </div>
+          <button onClick={onClose} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-rose-500/20 hover:text-rose-400 transition-all group">
+            <span className="text-xl group-hover:scale-125 transition-transform">✕</span>
+          </button>
+        </div>
+
+        <div className="space-y-10">
+          <SettingSlider label="时空引力" value={settings.gravity} min={0.01} max={0.3} step={0.01} onChange={v => onUpdate('gravity', v)} desc="重力场强度，决定下坠快慢" />
+          <SettingSlider label="空气粘度" value={settings.friction} min={0.85} max={0.99} step={0.01} onChange={v => onUpdate('friction', v)} desc="介质阻力，影响扩散惯性" />
+          <SettingSlider label="巡航频率" value={settings.autoLaunchDelay} min={500} max={10000} step={100} onChange={v => onUpdate('autoLaunchDelay', v)} unit="ms" desc="静默状态下的自动发射间隔" />
+          <SettingSlider label="粒子集群密度" value={settings.particleCountMultiplier} min={0.2} max={4.0} step={0.1} onChange={v => onUpdate('particleCountMultiplier', v)} desc="爆炸核心生成的碎片总数" />
+          <SettingSlider label="时空曲率(规模)" value={settings.explosionSizeMultiplier} min={0.2} max={4.0} step={0.1} onChange={v => onUpdate('explosionSizeMultiplier', v)} desc="单次爆炸覆盖的物理半径" />
+          <SettingSlider label="远星跃迁频率" value={settings.starBlinkSpeed} min={0.0001} max={0.005} step={0.0001} onChange={v => onUpdate('starBlinkSpeed', v)} desc="星空闪烁的量子律动速度" />
+          <SettingSlider label="升空轨迹长度" value={settings.trailLength} min={2} max={60} step={1} onChange={v => onUpdate('trailLength', v)} desc="火箭拖尾的视觉残影长度" />
+        </div>
+
+        <div className="mt-auto flex flex-col gap-4 pt-10 border-t border-white/5">
+          <button 
+            onClick={onRandomize}
+            className="w-full py-5 bg-cyan-500 text-black rounded-2xl text-xs font-black uppercase tracking-[0.4em] transition-all hover:bg-cyan-400 hover:shadow-[0_0_30px_rgba(6,182,212,0.5)] active:scale-95"
+          >
+            🎲 随机演化参数
+          </button>
+          <button 
+            onClick={() => {
+              if(confirm('确定要重置为实验室推荐参数吗？')) onReset();
+            }}
+            className="w-full py-4 hover:bg-white/5 text-white/20 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all border border-transparent hover:border-white/5"
+          >
+            重置为推荐值
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SettingSlider = ({ label, value, min, max, step, unit = '', onChange, desc }: { label: string, value: number, min: number, max: number, step: number, unit?: string, onChange: (v: number) => void, desc?: string }) => (
+  <div className="space-y-4 group">
+    <div className="flex justify-between items-end">
+      <div className="space-y-1.5">
+        <span className="text-[12px] uppercase tracking-[0.2em] font-black text-white/60 group-hover:text-cyan-400 transition-colors">{label}</span>
+        {desc && <p className="text-[9px] text-white/20 font-medium leading-relaxed">{desc}</p>}
+      </div>
+      <span className="text-cyan-400 font-mono text-sm font-bold bg-cyan-400/5 px-3 py-1 rounded-lg ring-1 ring-cyan-400/20">
+        {value.toFixed(label.includes('频率') || label.includes('长度') ? 0 : (label.includes('频率') ? 5 : 3))}{unit}
+      </span>
+    </div>
+    <input 
+      type="range" 
+      min={min} 
+      max={max} 
+      step={step} 
+      value={value} 
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      className="w-full h-1 bg-white/5 rounded-full appearance-none cursor-pointer accent-cyan-500 hover:bg-white/10 transition-all"
+    />
+  </div>
+);
+
+
+// =============================================================================
+// FILE: src\components\ui\TimeControlPanel.tsx
+// =============================================================================
+
+import React from 'react';
+import { TimeController } from '../../core/TimeController';
+import { CameraMode } from '../../types';
+
+interface TimeControlPanelProps {
+  timeController: TimeController | null;
+  cameraMode: CameraMode;
+  stats: {
+    particles: number;
+    fireworks: number;
+    fps: number;
+  };
+  onCameraModeChange: (mode: CameraMode) => void;
+  onTimeScaleChange: (scale: number) => void;
+  onTogglePause: () => void;
+}
+
+export const TimeControlPanel: React.FC<TimeControlPanelProps> = ({
+  timeController,
+  cameraMode,
+  stats,
+  onCameraModeChange,
+  onTimeScaleChange,
+  onTogglePause
+}) => {
+  const timeScale = timeController?.timeScale ?? 1;
+  const isPaused = timeController?.isPaused ?? false;
+
+  const presets = [
+    { label: '0.1x', value: 0.1, icon: '🐌' },
+    { label: '0.25x', value: 0.25, icon: '🐢' },
+    { label: '0.5x', value: 0.5, icon: '🚶' },
+    { label: '1x', value: 1, icon: '▶️' },
+    { label: '2x', value: 2, icon: '⏩' },
+    { label: '5x', value: 5, icon: '🚀' },
+  ];
+
+  return (
+    <div className="absolute bottom-8 left-8 z-30 flex flex-col gap-4">
+      {/* Time Control */}
+      <div className="bg-black/60 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-cyan-400 text-sm font-bold tracking-wider">⏱ 时间控制</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${isPaused ? 'bg-red-500/30 text-red-300' : 'bg-green-500/30 text-green-300'}`}>
+            {isPaused ? '已暂停' : `${timeScale.toFixed(2)}x`}
+          </span>
+        </div>
+        
+        {/* Pause Button */}
+        <button
+          onClick={onTogglePause}
+          className={`w-full mb-3 py-2.5 rounded-xl font-bold text-sm tracking-wider transition-all ${
+            isPaused 
+              ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/30'
+              : 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30'
+          }`}
+        >
+          {isPaused ? '▶ 继续 (P)' : '⏸ 暂停 (P)'}
+        </button>
+
+        {/* Speed Presets */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {presets.map(preset => (
+            <button
+              key={preset.value}
+              onClick={() => onTimeScaleChange(preset.value)}
+              className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                Math.abs(timeScale - preset.value) < 0.01 && !isPaused
+                  ? 'bg-cyan-500 text-black'
+                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <span className="text-sm">{preset.icon}</span>
+              <div className="mt-0.5">{preset.label}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Custom Speed Slider */}
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => onTimeScaleChange(Math.max(0.1, timeScale - 0.25))}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 flex items-center justify-center"
+          >
+            -
+          </button>
+          <input
+            type="range"
+            min="0.1"
+            max="10"
+            step="0.1"
+            value={timeScale}
+            onChange={(e) => onTimeScaleChange(parseFloat(e.target.value))}
+            className="flex-1 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-cyan-500"
+          />
+          <button 
+            onClick={() => onTimeScaleChange(Math.min(10, timeScale + 0.25))}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 flex items-center justify-center"
+          >
+            +
+          </button>
+        </div>
+        
+        <div className="mt-2 text-[9px] text-white/30 text-center">
+          [ / ] 调整速度 • 1/2/3 快捷预设
+        </div>
+      </div>
+
+      {/* Camera Control */}
+      <div className="bg-black/60 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-purple-400 text-sm font-bold tracking-wider">🎥 相机模式</span>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => onCameraModeChange('orbit')}
+            className={`py-3 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1 ${
+              cameraMode === 'orbit'
+                ? 'bg-purple-500 text-white'
+                : 'bg-white/5 text-white/60 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">🌍</span>
+            <span>轨道视角</span>
+          </button>
+          <button
+            onClick={() => onCameraModeChange('firstPerson')}
+            className={`py-3 rounded-xl text-xs font-bold transition-all flex flex-col items-center gap-1 ${
+              cameraMode === 'firstPerson'
+                ? 'bg-purple-500 text-white'
+                : 'bg-white/5 text-white/60 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">🚶</span>
+            <span>第一人称</span>
+          </button>
+        </div>
+        
+        <div className="mt-3 text-[9px] text-white/30 space-y-0.5">
+          {cameraMode === 'orbit' ? (
+            <>
+              <p>• 右键拖动旋转视角</p>
+              <p>• 滚轮缩放距离</p>
+              <p>• 左键点击发射烟花</p>
+            </>
+          ) : (
+            <>
+              <p>• WASD 移动</p>
+              <p>• 空格/Shift 上升/下降</p>
+              <p>• 鼠标控制视角</p>
+            </>
+          )}
+          <p>• C 切换模式</p>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="bg-black/60 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl">
+        <div className="flex items-center gap-3 mb-2">
+          <span className="text-green-400 text-sm font-bold tracking-wider">📊 实时统计</span>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-white/5 rounded-lg p-2">
+            <div className="text-cyan-400 font-mono text-lg font-bold">{stats.fps}</div>
+            <div className="text-[9px] text-white/40">FPS</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-2">
+            <div className="text-amber-400 font-mono text-lg font-bold">{stats.fireworks}</div>
+            <div className="text-[9px] text-white/40">烟花</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-2">
+            <div className="text-purple-400 font-mono text-lg font-bold">{(stats.particles / 1000).toFixed(1)}K</div>
+            <div className="text-[9px] text-white/40">粒子</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// =============================================================================
+// FILE: src\core\Firework.ts
+// =============================================================================
+
+
+import { Vector2 } from './Vector2';
+import { FireworkOptions, ExplosionType, AppSettings, ParticleOptions } from '../types';
+import { Particle } from './Particle';
+
+export class Firework {
+  pos: Vector2;
+  target: Vector2;
+  vel: Vector2;
+  hue: number;
+  charge: number;
+  exploded: boolean = false;
+  trail: Vector2[] = [];
+  trailLength: number;
+
+  constructor(options: FireworkOptions, settings: AppSettings) {
+    this.pos = new Vector2(options.startX, window.innerHeight);
+    this.target = new Vector2(options.targetX, options.targetY);
+    this.hue = options.hue;
+    this.charge = options.charge;
+    this.trailLength = settings.trailLength;
+
+    const distanceY = this.pos.y - this.target.y;
+    const gravity = settings.gravity;
+    const initialVelY = -Math.sqrt(2 * gravity * Math.max(10, distanceY)) * (0.85 + Math.random() * 0.3);
+    const timeToApex = -initialVelY / gravity;
+    const initialVelX = (this.target.x - this.pos.x) / timeToApex;
+
+    this.vel = new Vector2(initialVelX, initialVelY);
+  }
+
+  update(settings: AppSettings): void {
+    this.trail.push(this.pos.clone());
+    if (this.trail.length > this.trailLength) {
+      this.trail.shift();
+    }
+    this.vel.y += settings.gravity;
+    this.pos.add(this.vel);
+    
+    if (this.vel.y >= -0.2) {
+      this.exploded = true;
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D): void {
+    ctx.beginPath();
+    ctx.strokeStyle = `hsl(${this.hue}, 100%, 75%)`;
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < this.trail.length; i++) {
+      const p = this.trail[i];
+      const alpha = i / this.trail.length;
+      ctx.globalAlpha = alpha * 0.8;
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  createExplosion(settings: AppSettings, spawnParticle: (opts: ParticleOptions) => Particle): void {
+    const types = Object.values(ExplosionType);
+    const type = types[Math.floor(Math.random() * types.length)] as ExplosionType;
+    
+    let baseCount = Math.floor((180 + this.charge * 450) * settings.particleCountMultiplier);
+    const sizeScale = settings.explosionSizeMultiplier;
+
+    const spawn = (angle: number, speed: number, extraHue = 0, behavior: any = 'default', decay?: number) => {
+      spawnParticle({
+        x: this.pos.x, y: this.pos.y,
+        originX: this.pos.x,
+        originY: this.pos.y,
+        hue: (this.hue + extraHue) % 360,
+        angle,
+        speed: speed * sizeScale,
+        gravity: settings.gravity,
+        friction: settings.friction,
+        behavior,
+        decay
+      });
+    };
+
+    switch (type) {
+      case ExplosionType.HEART:
+        const heartCount = baseCount * 1.5;
+        for (let i = 0; i < heartCount; i++) {
+          const t = (i / heartCount) * Math.PI * 2;
+          const x = 16 * Math.pow(Math.sin(t), 3);
+          const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+          const speed = (Math.sqrt(x*x + y*y) / 8) * (6 + this.charge * 8);
+          spawn(Math.atan2(y, x), speed, 0, 'default', 0.012);
+        }
+        break;
+
+      case ExplosionType.STAR:
+        const pts = 5;
+        const starCount = baseCount * 1.3;
+        for (let i = 0; i < starCount; i++) {
+          const ang = (i / starCount) * Math.PI * 2;
+          const mod = (Math.abs(Math.cos(ang * pts / 2)) * 0.7 + 0.3);
+          spawn(ang, mod * (14 + this.charge * 18));
+        }
+        break;
+
+      case ExplosionType.GALAXY:
+        const arms = 4 + Math.floor(this.charge * 4);
+        for (let a = 0; a < arms; a++) {
+          const armBaseAngle = (a / arms) * Math.PI * 2;
+          for (let i = 0; i < baseCount / arms; i++) {
+            const prog = i / (baseCount / arms);
+            const angle = armBaseAngle + prog * Math.PI * 2.5;
+            const speed = prog * (15 + this.charge * 15);
+            spawn(angle, speed, prog * 80, 'galaxy');
+          }
+        }
+        break;
+
+      case ExplosionType.SPIRAL:
+        const sArms = 4 + Math.floor(this.charge * 4);
+        const pPerArm = Math.floor(baseCount / sArms);
+        for (let a = 0; a < sArms; a++) {
+          const armBaseAngle = (a / sArms) * Math.PI * 2;
+          for (let i = 0; i < pPerArm; i++) {
+            const prog = i / pPerArm;
+            const swirlAngle = armBaseAngle + (prog * Math.PI * 8);
+            const speed = (0.2 + prog * 0.8) * (20 + this.charge * 15);
+            spawn(swirlAngle, speed, prog * 60);
+          }
+        }
+        break;
+
+      case ExplosionType.BUTTERFLY:
+        const bfCount = baseCount * 1.5;
+        for (let i = 0; i < bfCount; i++) {
+          const t = (i / bfCount) * Math.PI * 2;
+          const r = Math.exp(Math.sin(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin((2 * t - Math.PI) / 24), 5);
+          const x = Math.sin(t) * r;
+          const y = -Math.cos(t) * r;
+          spawn(Math.atan2(y, x), Math.sqrt(x*x + y*y) * (8 + this.charge * 10), Math.sin(t) * 40);
+        }
+        break;
+
+      case ExplosionType.DOUBLE_RING:
+        const ringCount = Math.floor(baseCount * 0.6);
+        for (let i = 0; i < ringCount; i++) spawn((i / ringCount) * Math.PI * 2, 22 + this.charge * 12);
+        for (let i = 0; i < ringCount; i++) spawn((i / ringCount) * Math.PI * 2 + 0.2, 14 + this.charge * 8, 40);
+        break;
+
+      case ExplosionType.GLITTER:
+        for (let i = 0; i < baseCount; i++) spawn(Math.random() * Math.PI * 2, Math.random() * (22 + this.charge * 18), 0, 'glitter');
+        break;
+
+      default:
+        for (let i = 0; i < baseCount; i++) {
+          const angle = (i / baseCount) * Math.PI * 2;
+          spawn(angle, Math.random() * (20 + this.charge * 24));
+        }
+        break;
+    }
+  }
+}
+
+
+// =============================================================================
+// FILE: src\core\Firework3D.ts
+// =============================================================================
+
+import { Vector3 } from './Vector3';
+import { ExplosionType, AppSettings, ParticleOptions3D } from '../types';
+import { Particle3D } from './Particle3D';
+
+export interface Firework3DOptions {
+  startX: number;
+  startZ: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+  hue: number;
+  charge: number;
+}
+
+/**
+ * 3D Firework class
+ * Launches from ground and explodes at target position
+ */
+export class Firework3D {
+  position: Vector3;
+  target: Vector3;
+  velocity: Vector3;
+  hue: number;
+  charge: number;
+  exploded: boolean = false;
+  trail: Vector3[] = [];
+  trailLength: number;
+  
+  // For rendering
+  size: number = 3;
+
+  constructor(options: Firework3DOptions, settings: AppSettings) {
+    // Start from ground (Y = 0)
+    this.position = new Vector3(options.startX, 0, options.startZ);
+    this.target = new Vector3(options.targetX, options.targetY, options.targetZ);
+    this.hue = options.hue;
+    this.charge = options.charge;
+    this.trailLength = settings.trailLength;
+
+    // Calculate initial velocity to reach target
+    const distanceY = this.target.y - this.position.y;
+    const gravity = settings.gravity;
+    
+    // Using kinematic equations to calculate initial velocity
+    const timeToApex = Math.sqrt(2 * Math.max(10, distanceY) / gravity);
+    const initialVelY = gravity * timeToApex;
+    
+    // Calculate horizontal velocities
+    const initialVelX = (this.target.x - this.position.x) / timeToApex;
+    const initialVelZ = (this.target.z - this.position.z) / timeToApex;
+
+    this.velocity = new Vector3(
+      initialVelX * (0.85 + Math.random() * 0.3),
+      initialVelY * (0.85 + Math.random() * 0.3),
+      initialVelZ * (0.85 + Math.random() * 0.3)
+    );
+  }
+
+  update(settings: AppSettings, deltaTime: number): void {
+    // Skip update if paused
+    if (deltaTime <= 0) return;
+    
+    const dt = deltaTime * 60; // Normalize to 60fps
+
+    // Store trail
+    this.trail.push(this.position.clone());
+    if (this.trail.length > this.trailLength) {
+      this.trail.shift();
+    }
+
+    // Apply gravity (Y-up)
+    this.velocity.y -= settings.gravity * dt;
+
+    // Update position
+    this.position.x += this.velocity.x * dt;
+    this.position.y += this.velocity.y * dt;
+    this.position.z += this.velocity.z * dt;
+
+    // Check if reached apex (velocity Y becomes negative)
+    if (this.velocity.y <= 0) {
+      this.exploded = true;
+    }
+  }
+
+  /**
+   * Create explosion particles
+   */
+  createExplosion(
+    settings: AppSettings,
+    spawnParticle: (opts: ParticleOptions3D) => Particle3D
+  ): void {
+    const types = Object.values(ExplosionType);
+    const type = types[Math.floor(Math.random() * types.length)] as ExplosionType;
+
+    let baseCount = Math.floor((180 + this.charge * 450) * settings.particleCountMultiplier);
+    const sizeScale = settings.explosionSizeMultiplier;
+
+    const spawn = (
+      theta: number,
+      phi: number,
+      speed: number,
+      extraHue: number = 0,
+      behavior: any = 'default',
+      decay?: number
+    ) => {
+      spawnParticle({
+        x: this.position.x,
+        y: this.position.y,
+        z: this.position.z,
+        originX: this.position.x,
+        originY: this.position.y,
+        originZ: this.position.z,
+        hue: (this.hue + extraHue) % 360,
+        theta,
+        phi,
+        speed: speed * sizeScale,
+        gravity: settings.gravity,
+        friction: settings.friction,
+        behavior,
+        decay
+      });
+    };
+
+    // Helper to create spherical distribution
+    const sphericalSpawn = (count: number, speedBase: number, speedVar: number, behavior: any = 'default') => {
+      for (let i = 0; i < count; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1); // Uniform sphere distribution
+        const speed = speedBase + Math.random() * speedVar;
+        spawn(theta, phi, speed, Math.random() * 30, behavior);
+      }
+    };
+
+    switch (type) {
+      case ExplosionType.HEART: {
+        const heartCount = Math.floor(baseCount * 1.5);
+        for (let i = 0; i < heartCount; i++) {
+          const t = (i / heartCount) * Math.PI * 2;
+          const x = 16 * Math.pow(Math.sin(t), 3);
+          const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+          const speed = (Math.sqrt(x * x + y * y) / 8) * (6 + this.charge * 8);
+          const theta = Math.atan2(x, 1);
+          const phi = Math.atan2(Math.sqrt(x * x + 1), y) + Math.PI / 2;
+          spawn(theta, phi, speed, 0, 'default', 0.012);
+        }
+        break;
+      }
+
+      case ExplosionType.STAR: {
+        const pts = 5;
+        const starCount = Math.floor(baseCount * 1.3);
+        for (let i = 0; i < starCount; i++) {
+          const ang = (i / starCount) * Math.PI * 2;
+          const mod = Math.abs(Math.cos(ang * pts / 2)) * 0.7 + 0.3;
+          const theta = ang;
+          const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+          spawn(theta, phi, mod * (14 + this.charge * 18));
+        }
+        break;
+      }
+
+      case ExplosionType.GALAXY: {
+        const arms = 4 + Math.floor(this.charge * 4);
+        for (let a = 0; a < arms; a++) {
+          const armBaseAngle = (a / arms) * Math.PI * 2;
+          for (let i = 0; i < baseCount / arms; i++) {
+            const prog = i / (baseCount / arms);
+            const theta = armBaseAngle + prog * Math.PI * 2.5;
+            const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
+            const speed = prog * (15 + this.charge * 15);
+            spawn(theta, phi, speed, prog * 80, 'galaxy');
+          }
+        }
+        break;
+      }
+
+      case ExplosionType.SPIRAL: {
+        const sArms = 4 + Math.floor(this.charge * 4);
+        const pPerArm = Math.floor(baseCount / sArms);
+        for (let a = 0; a < sArms; a++) {
+          const armBaseAngle = (a / sArms) * Math.PI * 2;
+          for (let i = 0; i < pPerArm; i++) {
+            const prog = i / pPerArm;
+            const swirlAngle = armBaseAngle + prog * Math.PI * 8;
+            const phi = Math.PI / 2 + (prog - 0.5) * 0.5;
+            const speed = (0.2 + prog * 0.8) * (20 + this.charge * 15);
+            spawn(swirlAngle, phi, speed, prog * 60);
+          }
+        }
+        break;
+      }
+
+      case ExplosionType.BUTTERFLY: {
+        const bfCount = Math.floor(baseCount * 1.5);
+        for (let i = 0; i < bfCount; i++) {
+          const t = (i / bfCount) * Math.PI * 2;
+          const r = Math.exp(Math.sin(t)) - 2 * Math.cos(4 * t) + Math.pow(Math.sin((2 * t - Math.PI) / 24), 5);
+          const x = Math.sin(t) * r;
+          const y = -Math.cos(t) * r;
+          const speed = Math.sqrt(x * x + y * y) * (8 + this.charge * 10);
+          const theta = Math.atan2(x, 1);
+          const phi = Math.PI / 2;
+          spawn(theta, phi, speed, Math.sin(t) * 40);
+        }
+        break;
+      }
+
+      case ExplosionType.DOUBLE_RING: {
+        const ringCount = Math.floor(baseCount * 0.6);
+        // Outer ring
+        for (let i = 0; i < ringCount; i++) {
+          const theta = (i / ringCount) * Math.PI * 2;
+          spawn(theta, Math.PI / 2, 22 + this.charge * 12);
+        }
+        // Inner ring
+        for (let i = 0; i < ringCount; i++) {
+          const theta = (i / ringCount) * Math.PI * 2 + 0.2;
+          spawn(theta, Math.PI / 2, 14 + this.charge * 8, 40);
+        }
+        break;
+      }
+
+      case ExplosionType.GLITTER:
+        sphericalSpawn(baseCount, 5, 22 + this.charge * 18, 'glitter');
+        break;
+
+      case ExplosionType.WILLOW:
+        sphericalSpawn(baseCount, 8, 15 + this.charge * 12, 'willow');
+        break;
+
+      case ExplosionType.FIREFLY:
+        sphericalSpawn(Math.floor(baseCount * 0.5), 3, 10 + this.charge * 8, 'firefly');
+        break;
+
+      case ExplosionType.COMET: {
+        // Launch several comets in different directions
+        const cometCount = 5 + Math.floor(this.charge * 5);
+        for (let i = 0; i < cometCount; i++) {
+          const theta = (i / cometCount) * Math.PI * 2;
+          const phi = Math.PI / 3 + Math.random() * (Math.PI / 3);
+          spawn(theta, phi, 15 + this.charge * 20, i * 30, 'comet', 0.004);
+        }
+        // Plus some regular particles
+        sphericalSpawn(Math.floor(baseCount * 0.3), 5, 15, 'default');
+        break;
+      }
+
+      default:
+        // Default spherical burst
+        sphericalSpawn(baseCount, 5, 20 + this.charge * 24, 'default');
+        break;
+    }
+  }
+
+  getColor(): { r: number; g: number; b: number } {
+    const h = this.hue / 360;
+    const s = 1;
+    const l = 0.75;
+
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+
+    return {
+      r: hue2rgb(p, q, h + 1 / 3),
+      g: hue2rgb(p, q, h),
+      b: hue2rgb(p, q, h - 1 / 3)
+    };
+  }
+}
+
+
+// =============================================================================
+// FILE: src\core\Particle.ts
+// =============================================================================
+
+
+import { ParticleOptions, ParticleBehavior } from '../types';
+
+/**
+ * Performance-optimized Particle class.
+ */
+export class Particle {
+  public x: number = 0;
+  public y: number = 0;
+  public vx: number = 0;
+  public vy: number = 0;
+  public originX: number = 0;
+  public originY: number = 0;
+  public hue: number = 0;
+  public alpha: number = 1;
+  public decay: number = 0.02;
+  public friction: number = 0.95;
+  public gravity: number = 0.12;
+  public resistance: number = 0.005;
+  public size: number = 1;
+  public life: number = 1;
+  public behavior: ParticleBehavior = 'default';
+  public twinkleFactor: number = 0;
+  public timeOffset: number = 0;
+  public color: string = '';
+  public rotationSpeed: number = 0;
+
+  constructor() {}
+
+  init(options: ParticleOptions): void {
+    this.x = options.x;
+    this.y = options.y;
+    this.originX = options.originX ?? options.x;
+    this.originY = options.originY ?? options.y;
+    this.hue = options.hue;
+    this.behavior = options.behavior ?? 'default';
+    this.life = 1;
+    this.alpha = 1;
+    this.timeOffset = Math.random() * 100;
+    this.twinkleFactor = Math.random();
+
+    const angle = options.angle ?? Math.random() * Math.PI * 2;
+    const speed = options.speed ?? Math.random() * 10 + 2;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+
+    if (this.behavior === 'willow') {
+      this.friction = options.friction ?? 0.98;
+      this.gravity = options.gravity ?? 0.04;
+      this.decay = options.decay ?? 0.006;
+      this.size = options.size ?? 1.5;
+    } else if (this.behavior === 'glitter') {
+      this.friction = options.friction ?? 0.92;
+      this.gravity = options.gravity ?? 0.15;
+      this.decay = options.decay ?? 0.02;
+      this.size = options.size ?? Math.random() * 2 + 1;
+    } else if (this.behavior === 'firefly') {
+      this.friction = 0.94;
+      this.gravity = -0.01;
+      this.decay = 0.005;
+      this.size = 1.2;
+    } else if (this.behavior === 'comet') {
+      this.friction = 0.995;
+      this.gravity = 0.01;
+      this.decay = options.decay ?? 0.006;
+      this.size = 3;
+      this.resistance = 0.0001;
+    } else if (this.behavior === 'galaxy') {
+      this.friction = 0.98;
+      this.gravity = 0;
+      this.decay = options.decay ?? 0.008;
+      this.size = Math.random() * 1.5 + 0.5;
+      this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+    } else {
+      this.friction = options.friction ?? 0.95;
+      this.gravity = options.gravity ?? 0.12;
+      this.decay = options.decay ?? Math.random() * 0.02 + 0.01;
+      this.size = options.size ?? Math.random() * 2 + 1;
+    }
+
+    this.resistance = options.resistance ?? 0.005;
+    this.color = `hsl(${this.hue % 360}, 100%, 75%)`;
+  }
+
+  update(): void {
+    if (this.behavior === 'firefly') {
+      const now = performance.now() * 0.005 + this.timeOffset;
+      this.vx += Math.sin(now) * 0.05;
+      this.vy += Math.cos(now) * 0.05;
+    } else if (this.behavior === 'galaxy') {
+      const dx = this.x - this.originX;
+      const dy = this.y - this.originY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx) + this.rotationSpeed;
+      
+      const targetX = this.originX + Math.cos(angle) * (dist + this.vx);
+      const targetY = this.originY + Math.sin(angle) * (dist + this.vy);
+      
+      this.vx = targetX - this.x;
+      this.vy = targetY - this.y;
+    }
+
+    const speedSq = this.vx * this.vx + this.vy * this.vy;
+    if (speedSq > 0.001) {
+      const speed = Math.sqrt(speedSq);
+      const drag = speedSq * this.resistance;
+      this.vx -= (this.vx / speed) * drag;
+      this.vy -= (this.vy / speed) * drag;
+    }
+
+    this.vx *= this.friction;
+    this.vy = this.vy * this.friction + this.gravity;
+    
+    this.x += this.vx;
+    this.y += this.vy;
+
+    this.life -= this.decay;
+    
+    if (this.behavior === 'ghost') {
+      this.alpha = (Math.sin(this.life * 20) * 0.5 + 0.5) * this.life;
+    } else if (this.behavior === 'firefly') {
+      this.alpha = (Math.sin(performance.now() * 0.01 + this.timeOffset) * 0.4 + 0.6) * this.life;
+    } else {
+      this.alpha = this.life;
+    }
+    
+    if (this.behavior === 'glitter') {
+      this.twinkleFactor = (this.twinkleFactor + 0.15) % 1;
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D): void {
+    if (this.alpha <= 0) return;
+
+    let currentAlpha = this.alpha;
+    if (this.behavior === 'glitter' && this.twinkleFactor > 0.5) {
+      currentAlpha *= 0.2;
+    }
+
+    ctx.globalAlpha = currentAlpha;
+    ctx.fillStyle = this.color;
+    
+    if (this.behavior === 'willow' || this.behavior === 'comet') {
+      ctx.beginPath();
+      const trailLen = this.behavior === 'comet' ? 8 : 3;
+      ctx.lineWidth = this.behavior === 'comet' ? this.size * this.life : this.size;
+      ctx.strokeStyle = this.color;
+      ctx.moveTo(this.x, this.y);
+      ctx.lineTo(this.x - this.vx * trailLen, this.y - this.vy * trailLen);
+      ctx.stroke();
+      
+      if (this.behavior === 'comet') {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * this.life, 0, 6.28);
+        ctx.fill();
+      }
+    } else if (this.behavior === 'galaxy') {
+      ctx.fillRect(this.x - this.size, this.y - this.size, this.size * 2, this.size * 2);
+    } else {
+      if (this.size < 2) {
+        ctx.fillRect(this.x - this.size, this.y - this.size, this.size * 2, this.size * 2);
+      } else {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, 6.28);
+        ctx.fill();
+      }
+    }
+  }
+
+  isDead(): boolean {
+    return this.life <= 0;
+  }
+}
+
+
+// =============================================================================
+// FILE: src\core\Particle3D.ts
+// =============================================================================
+
+import { Vector3 } from './Vector3';
+import { ParticleBehavior, ParticleOptions3D } from '../types';
+
+/**
+ * 3D Particle class for the firework system
+ * Uses Three.js coordinate system (Y-up)
+ */
+export class Particle3D {
+  public position: Vector3;
+  public velocity: Vector3;
+  public origin: Vector3;
+  public hue: number = 0;
+  public alpha: number = 1;
+  public decay: number = 0.02;
+  public friction: number = 0.95;
+  public gravity: number = 0.12;
+  public resistance: number = 0.005;
+  public size: number = 1;
+  public life: number = 1;
+  public behavior: ParticleBehavior = 'default';
+  public twinkleFactor: number = 0;
+  public timeOffset: number = 0;
+  public rotationSpeed: number = 0;
+
+  // Trail for comet/willow effects
+  public trail: Vector3[] = [];
+  public maxTrailLength: number = 10;
+
+  constructor() {
+    this.position = new Vector3();
+    this.velocity = new Vector3();
+    this.origin = new Vector3();
+  }
+
+  init(options: ParticleOptions3D): void {
+    this.position = new Vector3(options.x, options.y, options.z);
+    this.origin = new Vector3(
+      options.originX ?? options.x,
+      options.originY ?? options.y,
+      options.originZ ?? options.z
+    );
+    this.hue = options.hue;
+    this.behavior = options.behavior ?? 'default';
+    this.life = 1;
+    this.alpha = 1;
+    this.timeOffset = Math.random() * 100;
+    this.twinkleFactor = Math.random();
+    this.trail = [];
+
+    // Calculate velocity from spherical coordinates
+    const theta = options.theta ?? Math.random() * Math.PI * 2;
+    const phi = options.phi ?? Math.random() * Math.PI;
+    const speed = options.speed ?? Math.random() * 10 + 2;
+
+    this.velocity = new Vector3(
+      speed * Math.sin(phi) * Math.cos(theta),
+      speed * Math.cos(phi),
+      speed * Math.sin(phi) * Math.sin(theta)
+    );
+
+    // Apply behavior-specific settings
+    if (this.behavior === 'willow') {
+      this.friction = options.friction ?? 0.98;
+      this.gravity = options.gravity ?? 0.04;
+      this.decay = options.decay ?? 0.006;
+      this.size = options.size ?? 1.5;
+      this.maxTrailLength = 15;
+    } else if (this.behavior === 'glitter') {
+      this.friction = options.friction ?? 0.92;
+      this.gravity = options.gravity ?? 0.15;
+      this.decay = options.decay ?? 0.02;
+      this.size = options.size ?? Math.random() * 2 + 1;
+    } else if (this.behavior === 'firefly') {
+      this.friction = 0.94;
+      this.gravity = -0.01;
+      this.decay = 0.005;
+      this.size = 1.2;
+    } else if (this.behavior === 'comet') {
+      this.friction = 0.995;
+      this.gravity = 0.01;
+      this.decay = options.decay ?? 0.006;
+      this.size = 3;
+      this.resistance = 0.0001;
+      this.maxTrailLength = 20;
+    } else if (this.behavior === 'galaxy') {
+      this.friction = 0.98;
+      this.gravity = 0;
+      this.decay = options.decay ?? 0.008;
+      this.size = Math.random() * 1.5 + 0.5;
+      this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+    } else {
+      this.friction = options.friction ?? 0.95;
+      this.gravity = options.gravity ?? 0.12;
+      this.decay = options.decay ?? Math.random() * 0.02 + 0.01;
+      this.size = options.size ?? Math.random() * 2 + 1;
+    }
+
+    this.resistance = options.resistance ?? 0.005;
+  }
+
+  update(deltaTime: number): void {
+    // Use a minimum dt to prevent division by zero and ensure smooth updates
+    const dt = Math.max(deltaTime * 60, 0.001); // Normalize to 60fps with minimum
+    
+    // Skip update if effectively paused
+    if (deltaTime <= 0) return;
+
+    // Store trail position
+    if (this.behavior === 'comet' || this.behavior === 'willow') {
+      this.trail.push(this.position.clone());
+      if (this.trail.length > this.maxTrailLength) {
+        this.trail.shift();
+      }
+    }
+
+    // Behavior-specific updates
+    if (this.behavior === 'firefly') {
+      const now = performance.now() * 0.005 + this.timeOffset;
+      this.velocity.x += Math.sin(now) * 0.05 * dt;
+      this.velocity.y += Math.cos(now * 0.7) * 0.05 * dt;
+      this.velocity.z += Math.sin(now * 1.3) * 0.05 * dt;
+    } else if (this.behavior === 'galaxy') {
+      const dx = this.position.x - this.origin.x;
+      const dz = this.position.z - this.origin.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      const angle = Math.atan2(dz, dx) + this.rotationSpeed * dt;
+
+      const targetX = this.origin.x + Math.cos(angle) * (dist + this.velocity.x * dt);
+      const targetZ = this.origin.z + Math.sin(angle) * (dist + this.velocity.z * dt);
+
+      // Safe division
+      if (dt > 0.001) {
+        this.velocity.x = (targetX - this.position.x) / dt;
+        this.velocity.z = (targetZ - this.position.z) / dt;
+      }
+    }
+
+    // Apply air resistance
+    const speedSq = this.velocity.x * this.velocity.x +
+                    this.velocity.y * this.velocity.y +
+                    this.velocity.z * this.velocity.z;
+    if (speedSq > 0.001) {
+      const speed = Math.sqrt(speedSq);
+      const drag = speedSq * this.resistance * dt;
+      this.velocity.x -= (this.velocity.x / speed) * drag;
+      this.velocity.y -= (this.velocity.y / speed) * drag;
+      this.velocity.z -= (this.velocity.z / speed) * drag;
+    }
+
+    // Apply friction
+    const frictionPower = Math.pow(this.friction, dt);
+    this.velocity.x *= frictionPower;
+    this.velocity.y *= frictionPower;
+    this.velocity.z *= frictionPower;
+
+    // Apply gravity (Y-up in Three.js)
+    this.velocity.y -= this.gravity * dt;
+
+    // Update position
+    this.position.x += this.velocity.x * dt;
+    this.position.y += this.velocity.y * dt;
+    this.position.z += this.velocity.z * dt;
+
+    // Update life
+    this.life -= this.decay * dt;
+
+    // Update alpha based on behavior
+    if (this.behavior === 'ghost') {
+      this.alpha = (Math.sin(this.life * 20) * 0.5 + 0.5) * this.life;
+    } else if (this.behavior === 'firefly') {
+      this.alpha = (Math.sin(performance.now() * 0.01 + this.timeOffset) * 0.4 + 0.6) * this.life;
+    } else {
+      this.alpha = this.life;
+    }
+
+    // Glitter twinkle
+    if (this.behavior === 'glitter') {
+      this.twinkleFactor = (this.twinkleFactor + 0.15 * dt) % 1;
+    }
+  }
+
+  isDead(): boolean {
+    return this.life <= 0;
+  }
+
+  getColor(): { r: number; g: number; b: number } {
+    // HSL to RGB conversion
+    const h = this.hue / 360;
+    const s = 1;
+    const l = 0.75;
+
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+
+    return {
+      r: hue2rgb(p, q, h + 1/3),
+      g: hue2rgb(p, q, h),
+      b: hue2rgb(p, q, h - 1/3)
+    };
+  }
+}
+
+
+// =============================================================================
+// FILE: src\core\ParticlePool.ts
+// =============================================================================
+
+
+import { Particle } from './Particle';
+import { ParticleOptions } from '../types';
+
+/**
+ * Performance-optimized Particle Pool
+ */
+export class ParticlePool {
+  private pool: Particle[] = [];
+  private active: Particle[] = [];
+  private maxActive: number;
+
+  constructor(maxActive: number) {
+    this.maxActive = maxActive;
+    // Warm up the pool
+    for (let i = 0; i < 2000; i++) {
+      this.pool.push(new Particle());
+    }
+  }
+
+  /**
+   * Get a particle: recycle the oldest active one if limit reached.
+   */
+  get(options: ParticleOptions): Particle {
+    let p: Particle;
+    
+    if (this.active.length >= this.maxActive) {
+      p = this.active.shift()!;
+    } else {
+      p = this.pool.pop() || new Particle();
+    }
+    
+    p.init(options);
+    this.active.push(p);
+    return p;
+  }
+
+  updateAndDraw(ctx: CanvasRenderingContext2D): void {
+    for (let i = this.active.length - 1; i >= 0; i--) {
+      const p = this.active[i];
+      p.update();
+      p.draw(ctx);
+      if (p.isDead()) {
+        this.active.splice(i, 1);
+        this.pool.push(p);
+      }
+    }
+  }
+
+  get activeCount() { return this.active.length; }
+}
+
+
+// =============================================================================
+// FILE: src\core\ParticlePool3D.ts
+// =============================================================================
+
+import { Particle3D } from './Particle3D';
+import { ParticleOptions3D } from '../types';
+
+/**
+ * Performance-optimized 3D Particle Pool
+ * Manages particle lifecycle with object pooling to minimize GC
+ */
+export class ParticlePool3D {
+  private pool: Particle3D[] = [];
+  private active: Particle3D[] = [];
+  private maxActive: number;
+
+  constructor(maxActive: number) {
+    this.maxActive = maxActive;
+    // Warm up the pool
+    for (let i = 0; i < 2000; i++) {
+      this.pool.push(new Particle3D());
+    }
+  }
+
+  /**
+   * Get a particle from the pool
+   * Recycles the oldest active particle if limit is reached
+   */
+  get(options: ParticleOptions3D): Particle3D {
+    let p: Particle3D;
+
+    if (this.active.length >= this.maxActive) {
+      p = this.active.shift()!;
+    } else {
+      p = this.pool.pop() || new Particle3D();
+    }
+
+    p.init(options);
+    this.active.push(p);
+    return p;
+  }
+
+  /**
+   * Update all active particles
+   */
+  update(deltaTime: number): void {
+    for (let i = this.active.length - 1; i >= 0; i--) {
+      const p = this.active[i];
+      p.update(deltaTime);
+      if (p.isDead()) {
+        this.active.splice(i, 1);
+        this.pool.push(p);
+      }
+    }
+  }
+
+  /**
+   * Get all active particles for rendering
+   */
+  getActiveParticles(): Particle3D[] {
+    return this.active;
+  }
+
+  /**
+   * Get the count of active particles
+   */
+  get activeCount(): number {
+    return this.active.length;
+  }
+
+  /**
+   * Clear all active particles
+   */
+  clear(): void {
+    while (this.active.length > 0) {
+      const p = this.active.pop()!;
+      this.pool.push(p);
+    }
+  }
+}
+
+
+// =============================================================================
+// FILE: src\core\TimeController.ts
+// =============================================================================
+
+/**
+ * TimeController - Controls the flow of time in the 3D world
+ * Allows pausing, slow motion, and time acceleration
+ */
+export class TimeController {
+  private _timeScale: number = 1;
+  private _isPaused: boolean = false;
+  private _lastRealTime: number = 0;
+  private _virtualTime: number = 0;
+  private _deltaTime: number = 0;
+
+  // Preset time scales
+  static readonly PAUSED = 0;
+  static readonly SLOW_MOTION = 0.2;
+  static readonly NORMAL = 1;
+  static readonly FAST = 2;
+  static readonly ULTRA_FAST = 5;
+
+  constructor() {
+    this._lastRealTime = performance.now();
+  }
+
+  /**
+   * Update the time controller - call this every frame
+   */
+  update(): void {
+    const currentRealTime = performance.now();
+    const realDelta = (currentRealTime - this._lastRealTime) / 1000; // Convert to seconds
+    this._lastRealTime = currentRealTime;
+
+    if (this._isPaused) {
+      this._deltaTime = 0;
+    } else {
+      this._deltaTime = realDelta * this._timeScale;
+      this._virtualTime += this._deltaTime;
+    }
+  }
+
+  /**
+   * Get the delta time adjusted for time scale
+   */
+  get deltaTime(): number {
+    return this._deltaTime;
+  }
+
+  /**
+   * Get the virtual time in the simulation
+   */
+  get virtualTime(): number {
+    return this._virtualTime;
+  }
+
+  /**
+   * Get the current time scale
+   */
+  get timeScale(): number {
+    return this._timeScale;
+  }
+
+  /**
+   * Set the time scale (0 = paused, 1 = normal, 2 = double speed, etc.)
+   */
+  set timeScale(value: number) {
+    this._timeScale = Math.max(0, Math.min(10, value));
+    if (this._timeScale === 0) {
+      this._isPaused = true;
+    } else {
+      this._isPaused = false;
+    }
+  }
+
+  /**
+   * Check if the simulation is paused
+   */
+  get isPaused(): boolean {
+    return this._isPaused;
+  }
+
+  /**
+   * Pause the simulation
+   */
+  pause(): void {
+    this._isPaused = true;
+  }
+
+  /**
+   * Resume the simulation
+   */
+  resume(): void {
+    this._isPaused = false;
+    this._lastRealTime = performance.now();
+  }
+
+  /**
+   * Toggle pause state
+   */
+  togglePause(): void {
+    if (this._isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  /**
+   * Set to slow motion
+   */
+  setSlowMotion(): void {
+    this._timeScale = TimeController.SLOW_MOTION;
+    this._isPaused = false;
+  }
+
+  /**
+   * Set to normal speed
+   */
+  setNormal(): void {
+    this._timeScale = TimeController.NORMAL;
+    this._isPaused = false;
+  }
+
+  /**
+   * Set to fast forward
+   */
+  setFast(): void {
+    this._timeScale = TimeController.FAST;
+    this._isPaused = false;
+  }
+
+  /**
+   * Increase time scale by a step
+   */
+  speedUp(step: number = 0.25): void {
+    this.timeScale = Math.min(10, this._timeScale + step);
+  }
+
+  /**
+   * Decrease time scale by a step
+   */
+  slowDown(step: number = 0.25): void {
+    this.timeScale = Math.max(0.1, this._timeScale - step);
+  }
+
+  /**
+   * Get a formatted string of the current time state
+   */
+  getStatusText(): string {
+    if (this._isPaused) return '⏸ 已暂停';
+    if (this._timeScale < 0.5) return `🐢 ${this._timeScale.toFixed(2)}x 慢动作`;
+    if (this._timeScale === 1) return '▶ 1x 正常';
+    if (this._timeScale <= 2) return `⏩ ${this._timeScale.toFixed(2)}x`;
+    return `🚀 ${this._timeScale.toFixed(2)}x 超速`;
+  }
+}
+
+
+// =============================================================================
+// FILE: src\core\Vector2.ts
+// =============================================================================
+
+
+export class Vector2 {
+  constructor(public x: number = 0, public y: number = 0) {}
+
+  add(v: Vector2): Vector2 {
+    this.x += v.x;
+    this.y += v.y;
+    return this;
+  }
+
+  multiply(scalar: number): Vector2 {
+    this.x *= scalar;
+    this.y *= scalar;
+    return this;
+  }
+
+  static fromAngle(angle: number, length: number): Vector2 {
+    return new Vector2(Math.cos(angle) * length, Math.sin(angle) * length);
+  }
+
+  clone(): Vector2 {
+    return new Vector2(this.x, this.y);
+  }
+}
+
+
+// =============================================================================
+// FILE: src\core\Vector3.ts
+// =============================================================================
+
+/**
+ * 3D Vector class for the 3D firework system
+ */
+export class Vector3 {
+  constructor(
+    public x: number = 0,
+    public y: number = 0,
+    public z: number = 0
+  ) {}
+
+  add(v: Vector3): Vector3 {
+    this.x += v.x;
+    this.y += v.y;
+    this.z += v.z;
+    return this;
+  }
+
+  sub(v: Vector3): Vector3 {
+    this.x -= v.x;
+    this.y -= v.y;
+    this.z -= v.z;
+    return this;
+  }
+
+  multiply(scalar: number): Vector3 {
+    this.x *= scalar;
+    this.y *= scalar;
+    this.z *= scalar;
+    return this;
+  }
+
+  length(): number {
+    return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+  }
+
+  normalize(): Vector3 {
+    const len = this.length();
+    if (len > 0) {
+      this.x /= len;
+      this.y /= len;
+      this.z /= len;
+    }
+    return this;
+  }
+
+  distanceTo(v: Vector3): number {
+    const dx = this.x - v.x;
+    const dy = this.y - v.y;
+    const dz = this.z - v.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  static fromSpherical(theta: number, phi: number, radius: number): Vector3 {
+    return new Vector3(
+      radius * Math.sin(phi) * Math.cos(theta),
+      radius * Math.cos(phi),
+      radius * Math.sin(phi) * Math.sin(theta)
+    );
+  }
+
+  clone(): Vector3 {
+    return new Vector3(this.x, this.y, this.z);
+  }
+
+  toArray(): [number, number, number] {
+    return [this.x, this.y, this.z];
+  }
+}
+
+
+// =============================================================================
+// FILE: src\main.tsx
+// =============================================================================
+
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App3D from './App3D';
+import './styles/index.css';
+
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App3D />
+  </React.StrictMode>
+);
+
+
+// =============================================================================
+// FILE: src\styles\index.css
+// =============================================================================
+
+/* Main styles for Celestial Fireworks Pro */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #050505;
+  user-select: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.3); border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(6, 182, 212, 0.5); }
+
+
+// =============================================================================
+// FILE: src\types\index.ts
+// =============================================================================
+
+
+export enum ExplosionType {
+  RING = '环形',
+  BURST = '爆发',
+  DOUBLE_LAYER = '双层',
+  WILLOW = '垂柳',
+  HEART = '心形',
+  GLITTER = '闪烁',
+  SPIRAL = '螺旋',
+  CROSS = '十字',
+  RAINBOW = '彩虹',
+  STAR = '星芒',
+  WAVE = '波浪',
+  CROWN = '皇冠',
+  PLANET = '行星',
+  DANDELION = '蒲公英',
+  FIREFLY = '萤火虫',
+  SATURN = '土星环',
+  BUTTERFLY = '幻蝶',
+  JELLYFISH = '水母',
+  GALAXY = '星系',
+  COMET = '彗星',
+  SNOWFLAKE = '雪花',
+  FOUNTAIN = '喷泉',
+  GHOST = '幽灵',
+  DOUBLE_RING = '双环'
+}
+
+export type ParticleBehavior = 'default' | 'willow' | 'glitter' | 'ghost' | 'firefly' | 'comet' | 'galaxy';
+
+export type CameraMode = 'orbit' | 'firstPerson';
+
+export interface ParticleOptions {
+  x: number;
+  y: number;
+  hue: number;
+  speed?: number;
+  angle?: number;
+  friction?: number;
+  gravity?: number;
+  resistance?: number;
+  size?: number;
+  decay?: number;
+  behavior?: ParticleBehavior;
+  originX?: number;
+  originY?: number;
+}
+
+export interface ParticleOptions3D {
+  x: number;
+  y: number;
+  z: number;
+  hue: number;
+  speed?: number;
+  theta?: number;  // Horizontal angle
+  phi?: number;    // Vertical angle
+  friction?: number;
+  gravity?: number;
+  resistance?: number;
+  size?: number;
+  decay?: number;
+  behavior?: ParticleBehavior;
+  originX?: number;
+  originY?: number;
+  originZ?: number;
+}
+
+export interface FireworkOptions {
+  startX: number;
+  targetX: number;
+  targetY: number;
+  hue: number;
+  charge: number; 
+}
+
+export interface AppSettings {
+  gravity: number;
+  friction: number;
+  autoLaunchDelay: number;
+  particleCountMultiplier: number;
+  explosionSizeMultiplier: number;
+  starBlinkSpeed: number;
+  trailLength: number;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  gravity: 0.12,
+  friction: 0.95,
+  autoLaunchDelay: 4000,
+  particleCountMultiplier: 1.2,
+  explosionSizeMultiplier: 1.2,
+  starBlinkSpeed: 0.0008, 
+  trailLength: 15
+};

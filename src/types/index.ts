@@ -1,32 +1,36 @@
+// FILE: src/types/index.ts
 
 export enum ExplosionType {
-  RING = '环形',
-  BURST = '爆发',
-  DOUBLE_LAYER = '双层',
-  WILLOW = '垂柳',
-  HEART = '心形',
-  GLITTER = '闪烁',
-  SPIRAL = '螺旋',
-  CROSS = '十字',
-  RAINBOW = '彩虹',
-  STAR = '星芒',
-  WAVE = '波浪',
-  CROWN = '皇冠',
-  PLANET = '行星',
-  DANDELION = '蒲公英',
-  FIREFLY = '萤火虫',
-  SATURN = '土星环',
+  // === 基础形态 ===
+  SPHERE = '标准球形',
+  RING = '行星环',
+  BURST = '高能爆发',
+
+  // === 艺术形态 ===
+  WILLOW = '金丝垂柳',
+  STROBE = '闪烁爆裂',  // 新增：带闪烁效果
+  GHOST = '幽灵火',     // 新增：渐显效果
+
+  // === 复杂组合技 (Combo) ===
+  PISTIL = '双层花蕊',  // 新增：内芯+外壳
+  CROSSETTE = '十字分裂', // 新增：分裂效果
+
+  // === 3D 造型 ===
+  HEART_BEAT = '跳动之心',
   BUTTERFLY = '幻蝶',
-  JELLYFISH = '水母',
-  GALAXY = '星系',
-  COMET = '彗星',
-  SNOWFLAKE = '雪花',
-  FOUNTAIN = '喷泉',
-  GHOST = '幽灵',
-  DOUBLE_RING = '双环'
+  DRAGON = '游龙',
+  GREAT_WALL = '长城',
+  ZODIAC = '生肖(蛇)',
+
+  // === 宇宙特效 ===
+  HELIX = 'DNA双螺旋',
+  SATURN = '土星',
+  GALAXY = '旋涡星系'
 }
 
-export type ParticleBehavior = 'default' | 'willow' | 'glitter' | 'ghost' | 'firefly' | 'comet' | 'galaxy';
+export type ParticleBehavior = 'default' | 'willow' | 'glitter' | 'ghost' | 'firefly' | 'comet' | 'galaxy' | 'stationary' | 'strobe';
+
+export type CameraMode = 'orbit' | 'firstPerson';
 
 export interface ParticleOptions {
   x: number;
@@ -44,12 +48,34 @@ export interface ParticleOptions {
   originY?: number;
 }
 
+export interface ParticleOptions3D {
+  x: number;
+  y: number;
+  z: number;
+  hue: number;
+  speed?: number;
+  theta?: number;  // Horizontal angle
+  phi?: number;    // Vertical angle
+  friction?: number;
+  gravity?: number;
+  resistance?: number;
+  size?: number;
+  decay?: number;
+  behavior?: ParticleBehavior;
+  originX?: number;
+  originY?: number;
+  originZ?: number;
+  targetX?: number;
+  targetY?: number;
+  targetZ?: number;
+}
+
 export interface FireworkOptions {
   startX: number;
   targetX: number;
   targetY: number;
   hue: number;
-  charge: number; 
+  charge: number;
 }
 
 export interface AppSettings {
@@ -64,10 +90,12 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   gravity: 0.12,
-  friction: 0.95,
-  autoLaunchDelay: 4000,
-  particleCountMultiplier: 1.2,
-  explosionSizeMultiplier: 1.2,
-  starBlinkSpeed: 0.0008, 
+  friction: 0.96, // 稍微增加阻力，让烟花在空中停留更久
+  autoLaunchDelay: 2500,
+  particleCountMultiplier: 1.0,
+  explosionSizeMultiplier: 1.0,
+  starBlinkSpeed: 0.001,
   trailLength: 15
 };
+
+// END OF FILE: src/types/index.ts
