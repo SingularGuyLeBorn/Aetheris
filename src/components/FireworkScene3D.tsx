@@ -17,7 +17,8 @@ import {
   AscensionType,
   FireworkConfig,
   ManualConfig,
-  ColorStyle
+  ColorStyle,
+  LaunchFormation
 } from '../types';
 
 /**
@@ -30,6 +31,7 @@ export interface FireworkScene3DProps {
   autoRotate: boolean;
   onTimeUpdate?: (timeController: TimeController) => void;
   onStatsUpdate?: (stats: { particles: number; fireworks: number; fps: number }) => void;
+  onLaunch?: (log: string) => void;
 }
 
 /**
@@ -70,7 +72,7 @@ const createDetailedParticleTexture = () => {
  * 使用 React.ForwardRefRenderFunction 显式声明以获得最佳 TS 支持
  */
 const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle, FireworkScene3DProps> = (
-    { settings, config, manualConfig, autoRotate, onTimeUpdate, onStatsUpdate },
+    { settings, config, manualConfig, autoRotate, onTimeUpdate, onStatsUpdate, onLaunch },
     ref
 ) => {
   // === 基础引用 ===
@@ -101,6 +103,224 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
   const lastAutoLaunchRef = useRef<number>(0);
   const lastCarnivalRef = useRef<number>(0);
   const fpsRef = useRef({ frames: 0, lastTime: 0, value: 0 });
+
+  // === 鼠标交互引用 ===
+  const mouseDownPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const mouseDownTime = useRef<number>(0);
+  const planeRef = useRef<THREE.Plane>(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+
+  /**
+   * 核心发射方法：支持从配置中随机或指定样式
+   */
+  const launchSingle = (s: AppSettings, c: FireworkConfig, overrides?: any) => {
+    const targetX = overrides?.targetX ?? (Math.random() - 0.5) * 800;
+    const targetZ = overrides?.targetZ ?? (Math.random() - 0.5) * 800;
+    const targetY = overrides?.targetY ?? (200 + Math.random() * 150);
+    const startX = overrides?.startX ?? (Math.random() - 0.5) * 1000;
+    const startZ = overrides?.startZ ?? (Math.random() - 0.5) * 1000;
+
+    // 1. 轨迹决策
+    let trajectory = overrides?.trajectory || 'RANDOM';
+    if (trajectory === 'RANDOM') {
+      const tPool = c.enabledTrajectories || [];
+      trajectory = tPool.length > 0 ? tPool[Math.floor(Math.random() * tPool.length)] : undefined;
+    }
+
+    // 2. 形状决策
+    let shape = overrides?.shape || 'RANDOM';
+    if (shape === 'RANDOM') {
+      const sPool = [...(c.enabledShape3Ds || []), ...(c.enabledShapes || [])];
+      shape = sPool.length > 0 ? sPool[Math.floor(Math.random() * sPool.length)] : undefined;
+    }
+
+    // 3. 组合技决策
+    let combo = overrides?.combo || 'RANDOM';
+    if (combo === 'RANDOM') {
+      const cbPool = c.enabledCombos || [];
+      combo = cbPool.length > 0 ? cbPool[Math.floor(Math.random() * cbPool.length)] : undefined;
+    }
+    
+    // 4. 生命周期决策 (Decay)
+    const lifeTimeOverride = overrides?.duration || 0;
+
+    fireworksRef.current.push(new Firework3D(
+      {
+        startX, startZ,
+        targetX, targetY, targetZ,
+        hue: Math.random() * 360,
+        charge: 1.0,
+        trajectoryType: trajectory,
+        comboType: combo,
+        customShape: shape,
+        lifeTimeOverride
+      },
+      s, c
+    ));
+
+    // 输出日志到 UI
+    if (!overrides?.skipLog) {
+       const logInfo = `🚀 发射: [${shape || '默认'}] - ${trajectory || '直线'} - ${combo || '单级'}`;
+       onLaunch?.(logInfo);
+    }
+  };
+
+  /**
+   * 队形发射器
+   */
+  const launchGroup = (
+      formation: LaunchFormation, 
+      count: number, 
+      interval: number, 
+      duration: number,
+      launchFn: (idx: number, posOffset: THREE.Vector3, targetOffset: THREE.Vector3) => void
+  ) => {
+      if (count <= 1 || formation === LaunchFormation.SINGLE) {
+          launchFn(0, new THREE.Vector3(), new THREE.Vector3());
+          return;
+      }
+
+      const radius = 150;
+      
+      for (let i = 0; i < count; i++) {
+          const offsetS = new THREE.Vector3(); 
+          const offsetT = new THREE.Vector3(); 
+          
+          const progress = i / count;
+          const angle = progress * Math.PI * 2;
+          
+          switch (formation) {
+              case LaunchFormation.CIRCLE:
+                  offsetT.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+                  offsetS.set(Math.cos(angle) * radius * 0.5, 0, Math.sin(angle) * radius * 0.5); 
+                  break;
+              case LaunchFormation.LINE:
+                  const w = radius * 2;
+                  const x = (i - count / 2) * (w / count);
+                  offsetT.set(x, 0, 0);
+                  offsetS.set(x, 0, 0);
+                  break;
+              case LaunchFormation.CROSS: // 简单的十字布局
+                  const arm = i % 4;
+                  const dist = Math.floor(i / 4 + 1) * (radius / 2);
+                  if (arm === 0) offsetT.set(dist, 0, 0);
+                  if (arm === 1) offsetT.set(-dist, 0, 0);
+                  if (arm === 2) offsetT.set(0, 0, dist);
+                  if (arm === 3) offsetT.set(0, 0, -dist);
+                  offsetS.copy(offsetT).multiplyScalar(0.5);
+                  break;
+              case LaunchFormation.V_SHAPE:
+                  const side = i % 2 === 0 ? 1 : -1;
+                  const row = Math.floor(i / 2);
+                  offsetT.set(side * row * 50, 0, row * 50);
+                  offsetS.copy(offsetT);
+                  break;
+              case LaunchFormation.RANDOM:
+              default:
+                  offsetT.set((Math.random()-0.5)*radius*2, (Math.random()-0.5)*50, (Math.random()-0.5)*radius*2);
+                  offsetS.set((Math.random()-0.5)*radius, 0, (Math.random()-0.5)*radius);
+                  break;
+          }
+
+          if (interval > 0) {
+              setTimeout(() => {
+                  launchFn(i, offsetS, offsetT);
+              }, i * interval);
+          } else {
+              launchFn(i, offsetS, offsetT);
+          }
+      }
+  };
+
+  /**
+   * 嘉年华序列执行逻辑
+   */
+  const launchCarnivalWave = (s: AppSettings, c: FireworkConfig) => {
+    const sequence = c.carnivalSequence || [];
+    
+    if (sequence.length === 0) {
+      const count = 5 + Math.floor(Math.random() * 8);
+      onLaunch?.(`随机波次: ${count} 枚`);
+      launchGroup(LaunchFormation.RANDOM, count, 150, 0, (i, offS, offT) => {
+         launchSingle(s, c);
+      });
+      return;
+    }
+
+    let totalDelay = 0;
+    sequence.forEach((stage, sIdx) => {
+      totalDelay += stage.delay;
+      setTimeout(() => {
+        onLaunch?.(`[大秀] ${stage.name}`);
+        launchGroup(
+            stage.formation || LaunchFormation.RANDOM,
+            stage.count,
+            stage.interval || 0,
+            stage.duration || 0,
+            (idx, offS, offT) => {
+                launchSingle(s, c, {
+                    trajectory: stage.trajectory,
+                    shape: stage.shape,
+                    combo: stage.combo,
+                    duration: stage.duration,
+                    targetX: offT.x * 1.5, 
+                    targetZ: offT.z * 1.5, 
+                    startX: offS.x,
+                    startZ: offS.z,
+                    skipLog: idx > 0 
+                });
+            }
+        );
+      }, totalDelay);
+    });
+  };
+
+  const createBackgroundStars = (scene: THREE.Scene) => {
+    const starGeo = new THREE.BufferGeometry();
+    const count = 4000;
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      const r = 3000 + Math.random() * 2000;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      pos[i * 3 + 2] = r * Math.cos(phi);
+      col[i * 3] = 0.8; col[i * 3 + 1] = 0.8; col[i * 3 + 2] = 1.0;
+    }
+
+    starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+    const starMat = new THREE.PointsMaterial({
+      size: 3, vertexColors: true, transparent: true, opacity: 0.5, sizeAttenuation: false
+    });
+    scene.add(new THREE.Points(starGeo, starMat));
+  };
+
+  const createReferenceGround = (scene: THREE.Scene) => {
+    const grid = new THREE.GridHelper(8000, 80, 0x223344, 0x05101a);
+    const gridMat = grid.material as THREE.Material;
+    gridMat.transparent = true;
+    gridMat.opacity = 0.1;
+    grid.position.y = -10;
+    scene.add(grid);
+  };
+
+  const updateStarsTwinkle = (time: number) => {
+    const stars = sceneRef.current?.children.find(c => c instanceof THREE.Points && !(c.material as any).map);
+    if (stars && stars instanceof THREE.Points) {
+      const colors = stars.geometry.attributes.color.array as Float32Array;
+      for (let i = 0; i < colors.length; i += 3) {
+        const f = 0.7 + 0.3 * Math.sin(time + i);
+        colors[i] = 0.8 * f;
+        colors[i + 1] = 0.8 * f;
+        colors[i + 2] = 1.0 * f;
+      }
+      stars.geometry.attributes.color.needsUpdate = true;
+    }
+  };
 
   // === 生命周期：初始化场景 ===
   useEffect(() => {
@@ -336,100 +556,75 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
     };
   }, []);
 
-  // === 内部方法实现 ===
-
-  const launchCarnivalWave = (s: AppSettings, c: FireworkConfig) => {
-    const waveSize = 8 + Math.floor(Math.random() * 8);
-    for (let i = 0; i < waveSize; i++) {
-      setTimeout(() => {
-        const targetX = (Math.random() - 0.5) * 800;
-        const targetZ = (Math.random() - 0.5) * 800;
-        const targetY = 200 + Math.random() * 150;
-
-        fireworksRef.current.push(new Firework3D(
-            {
-              startX: (Math.random() - 0.5) * 1000,
-              startZ: (Math.random() - 0.5) * 1000,
-              targetX, targetY, targetZ,
-              hue: Math.random() * 360,
-              charge: 1.0
-            },
-            s, c
-        ));
-      }, i * 120);
-    }
-  };
-
-  const createBackgroundStars = (scene: THREE.Scene) => {
-    const starGeo = new THREE.BufferGeometry();
-    const count = 4000;
-    const pos = new Float32Array(count * 3);
-    const col = new Float32Array(count * 3);
-
-    for (let i = 0; i < count; i++) {
-      const r = 3000 + Math.random() * 2000;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      pos[i * 3 + 2] = r * Math.cos(phi);
-      col[i * 3] = 0.8; col[i * 3 + 1] = 0.8; col[i * 3 + 2] = 1.0;
-    }
-
-    starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    starGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-
-    const starMat = new THREE.PointsMaterial({
-      size: 3, vertexColors: true, transparent: true, opacity: 0.5, sizeAttenuation: false
-    });
-    scene.add(new THREE.Points(starGeo, starMat));
-  };
-
-  const createReferenceGround = (scene: THREE.Scene) => {
-    const grid = new THREE.GridHelper(8000, 80, 0x223344, 0x05101a);
-    const gridMat = grid.material as THREE.Material;
-    gridMat.transparent = true;
-    gridMat.opacity = 0.1;
-    grid.position.y = -10;
-    scene.add(grid);
-  };
-
-  const updateStarsTwinkle = (time: number) => {
-    const stars = sceneRef.current?.children.find(c => c instanceof THREE.Points && !(c.material as any).map);
-    if (stars && stars instanceof THREE.Points) {
-      const colors = stars.geometry.attributes.color.array as Float32Array;
-      for (let i = 0; i < colors.length; i += 3) {
-        const f = 0.7 + 0.3 * Math.sin(time + i);
-        colors[i] = 0.8 * f;
-        colors[i + 1] = 0.8 * f;
-        colors[i + 2] = 1.0 * f;
-      }
-      stars.geometry.attributes.color.needsUpdate = true;
-    }
-  };
+  // 交互剧本索引指针
+  const manualStepIndexRef = useRef<number>(0);
 
   // === 暴露接口给父组件 ===
   useImperativeHandle(ref, () => ({
     launchCarnival: () => launchCarnivalWave(settingsRef.current, configRef.current),
     launchAt: (x, y, z) => {
       const mc = manualConfigRef.current;
-      const fwConfig: FireworkConfig = {
-        enabledShapes: mc.lockedShape === 'RANDOM' ? configRef.current.enabledShapes : [mc.lockedShape as ExplosionType],
-        enabledAscensions: configRef.current.enabledAscensions,
-        enabledColors: mc.lockedColor === 'RANDOM' ? configRef.current.enabledColors : [mc.lockedColor as ColorStyle]
-      };
+      const c = configRef.current;
+      const settings = settingsRef.current;
+      const manualSeq = c.manualSequence || [];
 
-      fireworksRef.current.push(new Firework3D(
-          {
-            startX: x + (Math.random() - 0.5) * 50,
-            startZ: z + (Math.random() - 0.5) * 50,
-            targetX: x, targetY: 200, targetZ: z,
-            hue: Math.random() * 360,
-            charge: 1.0
-          },
-          settingsRef.current,
-          fwConfig
-      ));
+      // 如果配置了手动交互剧本，则按剧本顺序发射
+      if (manualSeq.length > 0) {
+        const stage = manualSeq[manualStepIndexRef.current];
+        onLaunch?.(`[剧本] ${stage.name}`);
+        
+        launchGroup(
+            stage.formation || LaunchFormation.SINGLE,
+            stage.count,
+            stage.interval || 100,
+            stage.duration || 0,
+            (idx, offS, offT) => {
+               launchSingle(settings, c, {
+                 trajectory: stage.trajectory,
+                 shape: stage.shape,
+                 combo: stage.combo,
+                 duration: stage.duration,
+                 targetX: x + offT.x,
+                 targetY: y > 50 ? y : 220,
+                 targetZ: z + offT.z,
+                 startX: x + (Math.random() - 0.5) * 40 + offS.x,
+                 startZ: z + (Math.random() - 0.5) * 40 + offS.z,
+                 skipLog: idx > 0
+               });
+            }
+        );
+
+        manualStepIndexRef.current = (manualStepIndexRef.current + 1) % manualSeq.length;
+      } else {
+        // 回退逻辑：手动配置
+        // 使用新参数 lockedFormation, lockedCount, lockedDuration
+        const formation = mc.lockedFormation || LaunchFormation.SINGLE;
+        const count = mc.lockedCount || 1;
+        
+        launchGroup(
+            formation,
+            count,
+            mc.lockedInterval || 100,
+            mc.lockedDuration || 0,
+            (idx, offS, offT) => {
+                launchSingle(settings, c, {
+                  trajectory: mc.lockedTrajectory,
+                  shape: mc.lockedShape,
+                  combo: mc.lockedCombo,
+                  duration: mc.lockedDuration,
+                  targetX: x + offT.x,
+                  targetY: y > 50 ? y + (Math.random()-0.5)*20 : 200 + (Math.random()-0.5)*20,
+                  targetZ: z + offT.z,
+                  startX: x + (Math.random() - 0.5) * 50 + offS.x,
+                  startZ: z + (Math.random() - 0.5) * 50 + offS.z,
+                  skipLog: idx > 0
+                });
+            }
+        );
+        
+        if (count <= 1) onLaunch?.(`🎯 手动单发`);
+        else onLaunch?.(`🎯 手动齐射: ${count}发 (${formation})`);
+      }
     },
     getTimeController: () => timeControllerRef.current
   }));
@@ -476,5 +671,3 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
 
 // 封装导出
 export const FireworkScene3D = memo(forwardRef(FireworkScene3DInner));
-
-// END OF FILE: src/components/FireworkScene3D.tsx

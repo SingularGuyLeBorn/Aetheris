@@ -3,7 +3,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FireworkCanvas, FireworkCanvasHandle } from './components/FireworkCanvas';
 import { SettingsPanel } from './components/ui/SettingsPanel';
 import { HUD } from './components/ui/HUD';
-import { AppSettings, DEFAULT_SETTINGS } from './types';
+import { 
+  AppSettings, 
+  DEFAULT_SETTINGS, 
+  FireworkConfig, 
+  DEFAULT_CONFIG, 
+  ManualConfig, 
+  DEFAULT_MANUAL_CONFIG 
+} from './types';
 
 const STORAGE_KEY = 'celestial_fireworks_v4_settings';
 
@@ -25,16 +32,20 @@ const App: React.FC = () => {
     return DEFAULT_SETTINGS;
   });
 
+  const [config, setConfig] = useState<FireworkConfig>(DEFAULT_CONFIG);
+  const [manualConfig, setManualConfig] = useState<ManualConfig>(DEFAULT_MANUAL_CONFIG);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
 
-  const updateSetting = (key: keyof AppSettings, value: number) => {
+  const updateSetting = (key: keyof AppSettings, value: number | boolean) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
   const randomizeSettings = () => {
-    setSettings({
+    setSettings(prev => ({
+      ...prev,
       gravity: Number((Math.random() * 0.12 + 0.04).toFixed(3)),
       friction: Number((0.92 + Math.random() * 0.07).toFixed(3)),
       autoLaunchDelay: Math.floor(1000 + Math.random() * 6000),
@@ -42,7 +53,7 @@ const App: React.FC = () => {
       explosionSizeMultiplier: Number((0.6 + Math.random() * 1.6).toFixed(2)),
       starBlinkSpeed: Number((0.0003 + Math.random() * 0.002).toFixed(5)),
       trailLength: Math.floor(5 + Math.random() * 30)
-    });
+    }));
   };
 
   return (
@@ -81,8 +92,12 @@ const App: React.FC = () => {
       <SettingsPanel 
         show={showSettings} 
         settings={settings} 
+        config={config}
+        manualConfig={manualConfig}
         onClose={() => setShowSettings(false)}
         onUpdate={updateSetting}
+        onUpdateConfig={setConfig}
+        onUpdateManual={setManualConfig}
         onRandomize={randomizeSettings}
         onReset={() => setSettings(DEFAULT_SETTINGS)}
       />

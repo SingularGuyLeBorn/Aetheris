@@ -29,6 +29,11 @@ export class Vector3 {
     return this;
   }
 
+  // Alias for compatibility with THREE.js-like APIs
+  multiplyScalar(scalar: number): Vector3 {
+    return this.multiply(scalar);
+  }
+
   length(): number {
     return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
   }
