@@ -4,6 +4,7 @@
 import React, { useState, useMemo } from 'react';
 import { ShapePreviewCard, ShapePreview3D } from './ShapePreviewCard';
 import { TrajectoryPreview3D } from './TrajectoryPreview3D';
+import { CustomSelect } from './CustomSelect';
 import { Shape3DType, SHAPE_3D_INFO, SHAPE_CATEGORIES } from '../../core/shapes/Shape3DFactory';
 import { TrajectoryType, TRAJECTORY_INFO } from '../../core/trajectories/TrajectoryFactory';
 import { ComboType } from '../../core/combos/ComboManager';
@@ -292,7 +293,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1.5">
                       <Label text="发射队形" />
-                      <NiceSelect 
+                      <CustomSelect 
                          value={manualConfig.lockedFormation || LaunchFormation.SINGLE}
                          onChange={v => onUpdateManual({ ...manualConfig, lockedFormation: v as LaunchFormation })}
                          options={Object.values(LaunchFormation).map(f => ({ label: f, value: f }))}
@@ -316,7 +317,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1.5">
                       <Label text="锁定形状" />
-                      <NiceSelect 
+                      <CustomSelect 
                          value={manualConfig.lockedShape as string}
                          onChange={v => onUpdateManual({ ...manualConfig, lockedShape: v as any })}
                          options={[{ label: '🎲 随机', value: 'RANDOM' }, ...Object.values(Shape3DType).map(s => ({ label: SHAPE_3D_INFO[s].name, value: s }))]}
@@ -324,7 +325,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                    </div>
                    <div className="space-y-1.5">
                       <Label text="锁定轨迹" />
-                      <NiceSelect 
+                      <CustomSelect 
                          value={manualConfig.lockedTrajectory as string}
                          onChange={v => onUpdateManual({ ...manualConfig, lockedTrajectory: v as any })}
                          options={[{ label: '🎲 随机', value: 'RANDOM' }, ...Object.values(TrajectoryType).map(t => ({ label: TRAJECTORY_INFO[t].name, value: t }))]}
@@ -364,10 +365,25 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                       <h3 className="text-xl font-black tracking-tight">大秀编排</h3>
                       <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest mt-1">Direct Your Masterpiece</p>
                     </div>
-                    <div className="flex items-center gap-2 bg-black/20 backdrop-blur rounded-full px-1 py-1">
-                       <label className="text-[9px] font-black px-3 uppercase opacity-80">Auto Loop</label>
-                       <ToggleSwitch checked={settings.enableAutoCarnival} onChange={v => onUpdate('enableAutoCarnival', v)} color="emerald" customClass="scale-75 origin-right" />
-                    </div>
+                   <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-2 bg-black/20 backdrop-blur rounded-full px-1 py-1">
+                         <label className="text-[9px] font-black px-3 uppercase opacity-80">Auto Loop</label>
+                         <ToggleSwitch checked={settings.enableAutoCarnival} onChange={v => onUpdate('enableAutoCarnival', v)} color="emerald" customClass="scale-75 origin-right" />
+                      </div>
+                      {/* 自动播放间隔控制 */}
+                      {settings.enableAutoCarnival && (
+                        <div className="flex items-center gap-2 bg-white/10 backdrop-blur rounded-lg px-2 py-1 animate-slideUp">
+                           <span className="text-[9px] font-bold opacity-70">Interval</span>
+                           <input 
+                             type="range" min="1" max="10" step="1" 
+                             value={settings.carnivalInterval} 
+                             onChange={e => onUpdate('carnivalInterval', parseFloat(e.target.value))}
+                             className="w-16 h-1 bg-white/30 rounded-full appearance-none accent-white cursor-pointer"
+                           />
+                           <span className="text-[9px] font-bold w-4">{settings.carnivalInterval}s</span>
+                        </div>
+                      )}
+                   </div>
                   </div>
                   
                   <div className="flex gap-3">
@@ -429,7 +445,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                   
                   {/* 主要参数 */}
                   <div className="grid grid-cols-2 gap-3">
-                     <NiceSelect
+                     <CustomSelect
                         value={stage.trajectory}
                         onChange={v => {
                           const next = [...localSeq];
@@ -441,7 +457,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                           ...Object.values(TrajectoryType).map(t => ({ label: TRAJECTORY_INFO[t].name, value: t }))
                         ]}
                      />
-                     <NiceSelect
+                     <CustomSelect
                         value={stage.shape}
                         onChange={v => {
                           const next = [...localSeq];
@@ -459,7 +475,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                   <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-3 bg-slate-50/50 rounded-2xl border border-slate-100">
                       <div className="col-span-2">
                         <Label text="LAUNCH FORMATION" />
-                        <NiceSelect
+                        <CustomSelect
                           value={stage.formation || LaunchFormation.RANDOM}
                           onChange={v => {
                              const next = [...localSeq];
@@ -531,23 +547,4 @@ const ToggleSwitch: React.FC<{ checked: boolean, onChange: (v: boolean) => void,
   <button onClick={() => onChange(!checked)} className={`w-10 h-6 rounded-full transition-all duration-300 relative border border-transparent ${checked ? `bg-${color}-500 shadow-inner` : 'bg-slate-300'} ${customClass}`}>
     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-300 ${checked ? 'left-5' : 'left-1'}`} />
   </button>
-);
-
-const NiceSelect: React.FC<{ value: string, options: { label: string, value: string }[], onChange: (v: string) => void }> = ({ value, options, onChange }) => (
-  <div className="relative w-full group">
-    <select 
-       value={value} 
-       onChange={e => onChange(e.target.value)} 
-       className="
-          w-full bg-white/60 backdrop-blur-md 
-          border border-white/60 hover:border-emerald-300 focus:border-emerald-500
-          text-[10px] font-black text-slate-700 
-          py-2.5 px-3 pr-8 rounded-xl appearance-none outline-none 
-          shadow-sm transition-all cursor-pointer
-       "
-    >
-       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-emerald-500 transition-colors text-[8px]">▼</div>
-  </div>
 );
