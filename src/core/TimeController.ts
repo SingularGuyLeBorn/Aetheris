@@ -1,153 +1,80 @@
-/**
- * TimeController - Controls the flow of time in the 3D world
- * Allows pausing, slow motion, and time acceleration
- */
-export class TimeController {
-  private _timeScale: number = 1;
-  private _isPaused: boolean = false;
-  private _lastRealTime: number = 0;
-  private _virtualTime: number = 0;
-  private _deltaTime: number = 0;
+// FILE: src/core/TimeController.ts
+// 时间控制器 - 管理模拟时间流
 
-  // Preset time scales
-  static readonly PAUSED = 0;
-  static readonly SLOW_MOTION = 0.2;
-  static readonly NORMAL = 1;
-  static readonly FAST = 2;
-  static readonly ULTRA_FAST = 5;
+export class TimeController {
+  public isPaused: boolean = false;
+  public timeScale: number = 1.0;
+  public virtualTime: number = 0;
+  public deltaTime: number = 0;
+  
+  private lastRealTime: number = 0;
+  private accumulatedTime: number = 0;
 
   constructor() {
-    this._lastRealTime = performance.now();
+    this.reset();
   }
 
-  /**
-   * Update the time controller - call this every frame
-   */
+  reset(): void {
+    this.isPaused = false;
+    this.timeScale = 1.0;
+    this.virtualTime = 0;
+    this.deltaTime = 0;
+    this.lastRealTime = performance.now() / 1000;
+    this.accumulatedTime = 0;
+  }
+
   update(): void {
-    const currentRealTime = performance.now();
-    const realDelta = (currentRealTime - this._lastRealTime) / 1000; // Convert to seconds
-    this._lastRealTime = currentRealTime;
+    const currentRealTime = performance.now() / 1000;
+    const realDelta = currentRealTime - this.lastRealTime;
+    this.lastRealTime = currentRealTime;
 
-    if (this._isPaused) {
-      this._deltaTime = 0;
-    } else {
-      this._deltaTime = realDelta * this._timeScale;
-      this._virtualTime += this._deltaTime;
+    if (this.isPaused) {
+      this.deltaTime = 0;
+      return;
     }
+
+    this.deltaTime = realDelta * this.timeScale;
+    this.virtualTime += this.deltaTime;
+    this.accumulatedTime += this.deltaTime;
   }
 
-  /**
-   * Get the delta time adjusted for time scale
-   */
-  get deltaTime(): number {
-    return this._deltaTime;
-  }
-
-  /**
-   * Get the virtual time in the simulation
-   */
-  get virtualTime(): number {
-    return this._virtualTime;
-  }
-
-  /**
-   * Get the current time scale
-   */
-  get timeScale(): number {
-    return this._timeScale;
-  }
-
-  /**
-   * Set the time scale (0 = paused, 1 = normal, 2 = double speed, etc.)
-   */
-  set timeScale(value: number) {
-    this._timeScale = Math.max(0, Math.min(10, value));
-    if (this._timeScale === 0) {
-      this._isPaused = true;
-    } else {
-      this._isPaused = false;
-    }
-  }
-
-  /**
-   * Check if the simulation is paused
-   */
-  get isPaused(): boolean {
-    return this._isPaused;
-  }
-
-  /**
-   * Pause the simulation
-   */
   pause(): void {
-    this._isPaused = true;
+    this.isPaused = true;
   }
 
-  /**
-   * Resume the simulation
-   */
-  resume(): void {
-    this._isPaused = false;
-    this._lastRealTime = performance.now();
+  play(): void {
+    this.isPaused = false;
+    this.lastRealTime = performance.now() / 1000;
   }
 
-  /**
-   * Toggle pause state
-   */
-  togglePause(): void {
-    if (this._isPaused) {
-      this.resume();
+  togglePause(): boolean {
+    if (this.isPaused) {
+      this.play();
     } else {
       this.pause();
     }
+    return this.isPaused;
   }
 
-  /**
-   * Set to slow motion
-   */
-  setSlowMotion(): void {
-    this._timeScale = TimeController.SLOW_MOTION;
-    this._isPaused = false;
+  setTimeScale(scale: number): void {
+    this.timeScale = Math.max(0.1, Math.min(10, scale));
   }
 
-  /**
-   * Set to normal speed
-   */
-  setNormal(): void {
-    this._timeScale = TimeController.NORMAL;
-    this._isPaused = false;
+  getFormattedTime(): string {
+    const totalSeconds = Math.floor(this.virtualTime);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  /**
-   * Set to fast forward
-   */
-  setFast(): void {
-    this._timeScale = TimeController.FAST;
-    this._isPaused = false;
+  getProgress(duration: number): number {
+    return duration > 0 ? Math.min(1, this.virtualTime / duration) : 0;
   }
 
-  /**
-   * Increase time scale by a step
-   */
-  speedUp(step: number = 0.25): void {
-    this.timeScale = Math.min(10, this._timeScale + step);
-  }
-
-  /**
-   * Decrease time scale by a step
-   */
-  slowDown(step: number = 0.25): void {
-    this.timeScale = Math.max(0.1, this._timeScale - step);
-  }
-
-  /**
-   * Get a formatted string of the current time state
-   */
-  getStatusText(): string {
-    if (this._isPaused) return '⏸ 已暂停';
-    if (this._timeScale < 0.5) return `🐢 ${this._timeScale.toFixed(2)}x 慢动作`;
-    if (this._timeScale === 1) return '▶ 1x 正常';
-    if (this._timeScale <= 2) return `⏩ ${this._timeScale.toFixed(2)}x`;
-    return `🚀 ${this._timeScale.toFixed(2)}x 超速`;
+  seekTo(time: number): void {
+    this.virtualTime = Math.max(0, time);
+    this.accumulatedTime = this.virtualTime;
   }
 }
+
+// END OF FILE: src/core/TimeController.ts

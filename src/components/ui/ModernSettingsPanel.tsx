@@ -5,6 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { ShapePreviewCard, ShapePreview3D } from './ShapePreviewCard';
 import { TrajectoryPreview3D } from './TrajectoryPreview3D';
 import { CustomSelect } from './CustomSelect';
+import { CustomSelectWithPreview } from './CustomSelectWithPreview';
 import { Shape3DType, SHAPE_3D_INFO, SHAPE_CATEGORIES } from '../../core/shapes/Shape3DFactory';
 import { TrajectoryType, TRAJECTORY_INFO } from '../../core/trajectories/TrajectoryFactory';
 import { ComboType } from '../../core/combos/ComboManager';
@@ -48,15 +49,17 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
   onLaunchCarnival
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('shapes');
+  
+  // 核心状态：当前正在预览的项 (来自 Grid Hover 或 Dropdown Hover)
+  // 如果没有 Hover，则显示当前选中的（如第一个启用的形状或轨迹）
   const [previewShape, setPreviewShape] = useState<Shape3DType | null>(null);
-  const [hoveredTrajectory, setHoveredTrajectory] = useState<TrajectoryType | null>(null);
+  const [previewTrajectory, setPreviewTrajectory] = useState<TrajectoryType | null>(null);
+
   const [selectedCategory, setSelectedCategory] = useState<string>(SHAPE_CATEGORIES.BASIC_GEOMETRY);
   
   // 状态同步优化
   const [localSeq, setLocalSeq] = useState<CarnivalStage[]>(config.carnivalSequence || []);
-  const [localManualSeq, setLocalManualSeq] = useState<CarnivalStage[]>(config.manualSequence || []); // 虽然 UI 上可能主要用 Locked 模式，但也保留 Sequence
   const [hasChanges, setHasChanges] = useState(false);
-  const [hasManualChanges, setHasManualChanges] = useState(false);
 
   // 当外部 config 变化且非本地编辑导致时，同步数据
   React.useEffect(() => {
@@ -89,7 +92,6 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
   const [selectedNewShapes, setSelectedNewShapes] = useState<Shape3DType[]>(config.enabledShape3Ds || []);
   const [selectedTrajectories, setSelectedTrajectories] = useState<TrajectoryType[]>(config.enabledTrajectories || [TrajectoryType.LINEAR]);
   
-  // 同步初始化数据与 prop 的变化
   React.useEffect(() => {
     setSelectedNewShapes(config.enabledShape3Ds || []);
     setSelectedTrajectories(config.enabledTrajectories || [TrajectoryType.LINEAR]);
@@ -119,12 +121,20 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
     { id: 'physics' as TabId, label: 'Engine', icon: '⚙️', title: '物理引擎' },
   ];
 
+  // 计算当前应该在顶部固定预览显示的项
+  const activeShapeToShow = previewShape || (selectedNewShapes.length > 0 ? selectedNewShapes[0] : Shape3DType.SPHERE);
+  const activeTrajectoryToShow = previewTrajectory || (selectedTrajectories.length > 0 ? selectedTrajectories[0] : TrajectoryType.LINEAR);
+  
+  // 决定显示哪种预览 (Shape 还是 Trajectory)
+  // 规则：在 Trajectories Tab 显示轨迹，其他情况默认显示形状（或根据上下文）
+  const showTrajectoryPreview = activeTab === 'trajectories';
+
   return (
     <div 
       className={`
         fixed top-0 right-0 h-full w-[480px] 
-        bg-white/80 backdrop-blur-3xl 
-        shadow-[0_0_50px_rgba(0,0,0,0.1)] z-40 
+        bg-slate-50/90 backdrop-blur-3xl 
+        shadow-[0_0_50px_rgba(0,0,0,0.2)] z-40 
         transform transition-all duration-500 cubic-bezier(0.2, 0.8, 0.2, 1)
         border-l border-white/60
         flex flex-col
@@ -132,7 +142,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
       `}
     >
       {/* ========== Header ========== */}
-      <div className="px-6 pt-6 pb-4 border-b border-white/50 bg-gradient-to-b from-white/50 to-transparent">
+      <div className="px-6 pt-6 pb-2 border-b border-white/50 bg-gradient-to-b from-white/60 to-transparent">
         <div className="flex justify-between items-start mb-4">
           <div>
             <h2 className="text-2xl font-black text-slate-800 tracking-tight drop-shadow-sm flex items-center gap-2">
@@ -154,7 +164,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
         </div>
         
         {/* Tabs */}
-        <div className="flex gap-2 bg-slate-100/50 p-1.5 rounded-2xl border border-white/50 shadow-inner overflow-x-auto custom-scrollbar">
+        <div className="flex gap-2 bg-slate-200/50 p-1.5 rounded-2xl border border-white/50 shadow-inner overflow-x-auto custom-scrollbar">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -177,20 +187,34 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
         </div>
       </div>
       
-      {/* ========== 3D Preview Area (Sticky) ========== */}
-      {activeTab === 'shapes' && (
-        <ShapePreview3D 
-          shapeType={previewShape} 
-          className="h-44 border-b border-white/40 bg-gradient-to-b from-slate-50/50 to-white/50"
-        />
-      )}
+      {/* ========== Unified Fixed Preview Area (Sticky Top) ========== */}
+      <div className="relative z-10 bg-gradient-to-b from-slate-100/50 to-white/30 border-b border-white/60">
+        {showTrajectoryPreview ? (
+           <div className="h-48 w-full bg-slate-900 border-y border-white/10 relative overflow-hidden group">
+              <TrajectoryPreview3D 
+                trajectoryType={activeTrajectoryToShow}
+                speed={15}
+                height={250}
+                angle={0}
+              />
+              <div className="absolute top-2 left-3 bg-black/50 backdrop-blur px-2 py-1 rounded-lg text-[9px] font-bold text-cyan-400 border border-cyan-500/30">
+                PATH PREVIEW
+              </div>
+           </div>
+        ) : (
+           <ShapePreview3D 
+              shapeType={activeShapeToShow} 
+              className="h-48 border-b border-white/40 bg-gradient-to-b from-slate-50/50 to-white/50 shadow-inner"
+           />
+        )}
+      </div>
       
       {/* ========== Content ========== */}
       <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-white/30">
         
         {/* ===== Tab: Shapes ===== */}
         {activeTab === 'shapes' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-slideUp">
             <div className="flex flex-wrap gap-2 sticky top-0 bg-white/80 backdrop-blur p-2 -mx-2 rounded-xl z-10 border border-white/50 shadow-sm">
               {Object.values(SHAPE_CATEGORIES).map(cat => (
                 <button
@@ -216,7 +240,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                   type={type}
                   active={selectedNewShapes.includes(type)}
                   onClick={() => toggleNewShape(type)}
-                  onPreview={setPreviewShape}
+                  onPreview={(shape) => setPreviewShape(shape)}
                 />
               ))}
             </div>
@@ -225,50 +249,45 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
         
         {/* ===== Tab: Trajectories ===== */}
         {activeTab === 'trajectories' && (
-          <div className="space-y-6">
-             <div className="h-56 bg-slate-900 rounded-[32px] border-4 border-white shadow-xl overflow-hidden relative group ring-1 ring-slate-900/10">
-                <TrajectoryPreview3D 
-                   trajectoryType={hoveredTrajectory || (selectedTrajectories.length > 0 ? selectedTrajectories[0] : null)} 
-                />
-                <div className="absolute top-4 left-4 bg-black/40 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold text-white/80 border border-white/10">
-                   3D Live Preview
-                </div>
+          <div className="space-y-4 animate-slideUp">
+             <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 text-[10px] text-blue-600 font-medium">
+                选择已启用的上升轨迹。系统将在发射时从中随机选择。
              </div>
-
-            <div className="grid grid-cols-1 gap-2">
+             <div className="grid grid-cols-1 gap-2">
               {Object.values(TrajectoryType).map(type => {
                 const info = TRAJECTORY_INFO[type];
                 const isSelected = selectedTrajectories.includes(type);
+                const isHovered = previewTrajectory === type;
+                
                 return (
                   <button
                     key={type}
                     onClick={() => toggleTrajectory(type)}
-                    onMouseEnter={() => setHoveredTrajectory(type)}
-                    onMouseLeave={() => setHoveredTrajectory(null)}
+                    onMouseEnter={() => setPreviewTrajectory(type)}
+                    onMouseLeave={() => setPreviewTrajectory(null)}
                     className={`
                       w-full p-4 rounded-2xl border text-left transition-all duration-300 flex items-center justify-between group
-                      ${isSelected 
-                        ? 'border-emerald-200 bg-white shadow-lg shadow-emerald-100/50 scale-[1.02]' 
-                        : 'border-white/60 bg-white/60 hover:bg-white hover:border-emerald-100'
+                      ${isHovered 
+                        ? 'border-cyan-300 bg-gradient-to-r from-cyan-50 to-emerald-50 shadow-lg scale-[1.02]'
+                        : isSelected 
+                          ? 'border-emerald-200 bg-white shadow-lg shadow-emerald-100/50 scale-[1.01]' 
+                          : 'border-white/60 bg-white/60 hover:bg-white hover:border-emerald-100'
                       }
                     `}
                   >
                     <div className="flex items-center gap-4">
                       <div className={`
-                         w-12 h-12 rounded-2xl flex items-center justify-center text-2xl
-                         ${isSelected ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-500'}
-                         transition-colors
+                        w-11 h-11 rounded-2xl flex items-center justify-center text-xl
+                        ${isHovered || isSelected ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}
                       `}>
-                         {info.icon}
+                        {info.icon}
                       </div>
                       <div>
-                        <div className={`text-sm font-black ${isSelected ? 'text-emerald-700' : 'text-slate-600'}`}>
-                          {info.name}
-                        </div>
+                        <div className="text-sm font-black text-slate-700">{info.name}</div>
                         <p className="text-[10px] text-slate-400 font-medium">{info.description}</p>
                       </div>
                     </div>
-                    {isSelected && <div className="text-emerald-500 text-xl">✓</div>}
+                    {isSelected && <span className="text-emerald-500 text-lg">✓</span>}
                   </button>
                 );
               })}
@@ -313,22 +332,26 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                    </div>
                 </div>
 
-                {/* 2. 形状与轨迹锁定 */}
+                {/* 2. 形状与轨迹锁定 - 使用带预览的 Select */}
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-1.5">
-                      <Label text="锁定形状" />
-                      <CustomSelect 
+                      <Label text="锁定形状 (Hover Preview)" />
+                      <CustomSelectWithPreview 
                          value={manualConfig.lockedShape as string}
                          onChange={v => onUpdateManual({ ...manualConfig, lockedShape: v as any })}
                          options={[{ label: '🎲 随机', value: 'RANDOM' }, ...Object.values(Shape3DType).map(s => ({ label: SHAPE_3D_INFO[s].name, value: s }))]}
+                         previewType="shape"
+                         placeholder="随机"
                       />
                    </div>
                    <div className="space-y-1.5">
-                      <Label text="锁定轨迹" />
-                      <CustomSelect 
+                      <Label text="锁定轨迹 (Hover Preview)" />
+                      <CustomSelectWithPreview 
                          value={manualConfig.lockedTrajectory as string}
                          onChange={v => onUpdateManual({ ...manualConfig, lockedTrajectory: v as any })}
                          options={[{ label: '🎲 随机', value: 'RANDOM' }, ...Object.values(TrajectoryType).map(t => ({ label: TRAJECTORY_INFO[t].name, value: t }))]}
+                         previewType="trajectory"
+                         placeholder="随机"
                       />
                    </div>
                 </div>
@@ -341,13 +364,6 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                        <Slider label="存续时间 (s)" value={manualConfig.lockedDuration || 0} min={0} max={10} step={0.5} unit="s" onChange={v => onUpdateManual({ ...manualConfig, lockedDuration: v })} color="orange" />
                     </div>
                 </div>
-             </div>
-             
-             {/* Sequence Editor Placeholder */}
-             <div className="opacity-50 pointer-events-none filter blur-[1px]">
-                 <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-6 text-center">
-                    <p className="text-xs font-black text-gray-400">交互剧本编排功能 (开发中)</p>
-                 </div>
              </div>
           </div>
         )}
@@ -443,9 +459,9 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                     }} className="text-gray-200 hover:text-red-400 text-lg px-2">×</button>
                   </div>
                   
-                  {/* 主要参数 */}
+                  {/* 主要参数 - 使用带预览的 Select */}
                   <div className="grid grid-cols-2 gap-3">
-                     <CustomSelect
+                     <CustomSelectWithPreview
                         value={stage.trajectory}
                         onChange={v => {
                           const next = [...localSeq];
@@ -456,8 +472,10 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                           { label: '🎲 随机轨迹', value: 'RANDOM' },
                           ...Object.values(TrajectoryType).map(t => ({ label: TRAJECTORY_INFO[t].name, value: t }))
                         ]}
+                        previewType="trajectory"
+                        placeholder="选择轨迹"
                      />
-                     <CustomSelect
+                     <CustomSelectWithPreview
                         value={stage.shape}
                         onChange={v => {
                           const next = [...localSeq];
@@ -468,6 +486,8 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                           { label: '🎲 随机形状', value: 'RANDOM' },
                           ...Object.values(Shape3DType).map(s => ({ label: SHAPE_3D_INFO[s].name, value: s }))
                         ]}
+                        previewType="shape"
+                        placeholder="选择形状"
                      />
                   </div>
                   
@@ -512,7 +532,7 @@ export const ModernSettingsPanel: React.FC<ModernSettingsPanelProps> = ({
                <Slider label="Gravity (重力)" value={settings.gravity} min={0.01} max={0.3} step={0.01} onChange={v => onUpdate('gravity', v)} />
                <Slider label="Air Resistance (阻力)" value={settings.friction} min={0.85} max={0.99} step={0.01} onChange={v => onUpdate('friction', v)} />
                <Slider label="Particle Density (密度)" value={settings.particleCountMultiplier} min={0.1} max={3.0} step={0.1} unit="x" onChange={v => onUpdate('particleCountMultiplier', v)} />
-               <Slider label="Explosion Scale (规模)" value={settings.explosionSizeMultiplier} min={0.5} max={3.0} step={0.1} unit="x" onChange={v => onUpdate('explosionSizeMultiplier', v)} />
+               <Slider label="Explosion Scale (规模)" value={settings.explosionSizeMultiplier} min={0.1} max={100} step={0.1} unit="x" onChange={v => onUpdate('explosionSizeMultiplier', v)} />
             </div>
           </div>
         )}

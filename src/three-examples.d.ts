@@ -64,6 +64,7 @@ declare module 'three/examples/jsm/postprocessing/EffectComposer' {
         reset(renderTarget?: WebGLRenderTarget): void;
         setSize(width: number, height: number): void;
         setPixelRatio(pixelRatio: number): void;
+        dispose(): void;
     }
 }
 
@@ -99,6 +100,26 @@ declare module 'three/examples/jsm/postprocessing/UnrealBloomPass' {
     }
 }
 
+declare module 'three/examples/jsm/postprocessing/ShaderPass' {
+    import { ShaderMaterial, WebGLRenderer, WebGLRenderTarget } from 'three';
+    import { Pass } from 'three/examples/jsm/postprocessing/Pass';
+    export class ShaderPass extends Pass {
+        constructor(shader: any, textureID?: string);
+        textureID: string;
+        uniforms: { [uniform: string]: { value: any } };
+        material: ShaderMaterial;
+        fsQuad: any;
+        render(renderer: WebGLRenderer, writeBuffer: WebGLRenderTarget, readBuffer: WebGLRenderTarget, deltaTime: number, maskActive: boolean): void;
+    }
+}
+
+declare module 'three/examples/jsm/postprocessing/OutputPass' {
+    import { Pass } from 'three/examples/jsm/postprocessing/Pass';
+    export class OutputPass extends Pass {
+        constructor();
+    }
+}
+
 declare module 'three/examples/jsm/postprocessing/Pass' {
     import { WebGLRenderer, WebGLRenderTarget } from 'three';
     export class Pass {
@@ -111,3 +132,4 @@ declare module 'three/examples/jsm/postprocessing/Pass' {
         render(renderer: WebGLRenderer, writeBuffer: WebGLRenderTarget, readBuffer: WebGLRenderTarget, deltaTime: number, maskActive: boolean): void;
     }
 }
+

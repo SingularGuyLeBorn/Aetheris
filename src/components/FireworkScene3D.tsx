@@ -1,4 +1,5 @@
 // FILE: src/components/FireworkScene3D.tsx
+// 升级版 - 支持 PBR 材质、电影级后期处理、Verlet 积分物理
 
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, memo } from 'react';
 import * as THREE from 'three';
@@ -10,6 +11,9 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ParticlePool3D } from '../core/ParticlePool3D';
 import { Firework3D } from '../core/Firework3D';
 import { TimeController } from '../core/TimeController';
+import { PostProcessingStack, DEFAULT_POST_PROCESSING_CONFIG, PostProcessingConfig } from '../core/PostProcessingStack';
+import { PhysicsEngine, DEFAULT_PHYSICS_CONFIG, IntegratorType } from '../core/PhysicsEngine';
+import { getPBRMaterialManager, createPBRParticleTexture } from '../core/PBRMaterial';
 import {
   AppSettings,
   CameraMode,
@@ -44,23 +48,48 @@ export interface FireworkScene3DHandle {
 }
 
 /**
- * 内部辅助函数：创建一个发光的粒子贴图
+ * 内部辅助函数：创建 PBR 级别的发光粒子贴图
+ * 多层渐变实现 HDR 效果，核心光晕 + 柔和边缘
  */
 const createDetailedParticleTexture = () => {
   const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return new THREE.Texture();
+  const resolution = 128;
+  canvas.width = resolution;
+  canvas.height = resolution;
+  const ctx = canvas.getContext('2d')!;
+  
+  const center = resolution / 2;
 
-  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
-  gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.3)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  // 第一层：核心光晕 (超高强度 HDR)
+  const coreGradient = ctx.createRadialGradient(center, center, 0, center, center, center * 0.3);
+  coreGradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+  coreGradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.95)');
+  coreGradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.5)');
+  coreGradient.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+  
+  ctx.fillStyle = coreGradient;
+  ctx.fillRect(0, 0, resolution, resolution);
 
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 64, 64);
+  // 第二层：主光晕 (中等强度)
+  const mainGradient = ctx.createRadialGradient(center, center, 0, center, center, center * 0.7);
+  mainGradient.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+  mainGradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.25)');
+  mainGradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.08)');
+  mainGradient.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+  
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = mainGradient;
+  ctx.fillRect(0, 0, resolution, resolution);
+
+  // 第三层：外层柔和边缘 (营造真实感)
+  const outerGradient = ctx.createRadialGradient(center, center, 0, center, center, center);
+  outerGradient.addColorStop(0, 'rgba(255, 255, 255, 0.0)');
+  outerGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
+  outerGradient.addColorStop(0.85, 'rgba(255, 255, 255, 0.01)');
+  outerGradient.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+  
+  ctx.fillStyle = outerGradient;
+  ctx.fillRect(0, 0, resolution, resolution);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
@@ -345,7 +374,7 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
     camera.position.set(0, 150, 600);
     cameraRef.current = camera;
 
-    // 4. 创建渲染器 (Renderer)
+    // 4. 创建渲染器 (Renderer) - HDR 配置
     const renderer = new THREE.WebGLRenderer({
       antialias: false,
       powerPreference: 'high-performance',
@@ -354,19 +383,22 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.toneMapping = THREE.ReinhardToneMapping;
-    renderer.toneMappingExposure = 1.8;
+    // 使用 ACES Filmic 色调映射 - 电影级 HDR 渲染
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.5;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 5. 配置后期处理 (EffectComposer) 实现辉光
+    // 5. 配置增强版后期处理 (EffectComposer)
+    // 使用更强的 Bloom 效果实现 HDR 光溢出
     const composer = new EffectComposer(renderer);
     const renderPass = new RenderPass(scene, camera);
     const bloomPass = new UnrealBloomPass(
         new THREE.Vector2(window.innerWidth, window.innerHeight),
-        1.2, // 强度
-        0.4, // 半径
-        0.1  // 阈值
+        1.8,   // 强度 - 增强到 1.8 实现更明显的光溢出
+        0.5,   // 半径 - 增加到 0.5 让光晕更柔和
+        0.15   // 阈值 - 降低到 0.15 让更多区域产生辉光
     );
     composer.addPass(renderPass);
     composer.addPass(bloomPass);
@@ -408,6 +440,21 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
 
     // 8. 创建背景元素
     createBackgroundStars(scene);
+
+    // 具象化 XOZ 平面 (地面) - 极座标网格 + 标准网格
+    const polarGrid = new THREE.PolarGridHelper(300, 16, 8, 0x059669, 0x064e3b);
+    polarGrid.position.y = -50; // 下沉至地面
+    (polarGrid.material as THREE.Material).transparent = true;
+    (polarGrid.material as THREE.Material).opacity = 0.2;
+    scene.add(polarGrid);
+
+    const gridHelper = new THREE.GridHelper(800, 40, 0x334155, 0x0f172a);
+    gridHelper.position.y = -50;
+    gridHelper.material.transparent = true;
+    gridHelper.material.opacity = 0.15;
+    scene.add(gridHelper);
+    
+    // createReferenceGround(scene); // Deprecated
     createReferenceGround(scene);
 
     // 9. 处理窗口缩放
@@ -449,43 +496,155 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
           }
         }
 
-        // B. 烟花物理更新
-        for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
-          const fw = fireworksRef.current[i];
-          fw.update(currentSettings, dt);
+        // === Sub-stepping 帧内多次物理计算 ===
+        // 确保即使在低帧率下轨迹也丝滑平稳
+        const SUB_STEPS = 4;  // 每帧进行 4 次物理更新
+        const subDt = dt / SUB_STEPS;
+        
+        for (let step = 0; step < SUB_STEPS; step++) {
+          // B. 烟花物理更新 (使用 Verlet 积分器自动处理)
+          for (let i = fireworksRef.current.length - 1; i >= 0; i--) {
+            const fw = fireworksRef.current[i];
+            fw.update(currentSettings, subDt);
 
-          // 升空过程：生成尾焰粒子
-          if (!fw.exploded) {
-            const speed = fw.velocity.length();
-            // 解决“太亮”问题：根据速度动态调节透明度和密度
-            const spawnProbability = Math.min(1, speed / 15);
-            const alphaValue = Math.min(1, speed / 20);
+            // 升空过程：生成尾焰粒子 (仅在最后一个子步骤生成，避免过多粒子)
+            // 升空过程：生成尾焰粒子
+            // 增强逻辑：对于复杂轨迹，在每个 sub-step 都生成粒子以获得平滑曲线
+            // 对于直线/简单轨迹，仅在每帧生成一次以节省性能
+            const isComplexTrail = Boolean(fw.ascension && fw.ascension.match(/(SPIRAL|HELIX|ZIGZAG|SINE|WOBBLE)/i));
+            const shouldEmit = !fw.exploded && (isComplexTrail || step === SUB_STEPS - 1);
 
-            if (Math.random() < spawnProbability) {
-              const p = particlePoolRef.current.get({
-                x: fw.position.x + (Math.random() - 0.5) * 1.5,
-                y: fw.position.y - 1,
-                z: fw.position.z + (Math.random() - 0.5) * 1.5,
-                hue: fw.hue,
-                speed: 0,
-                size: 5 * (speed / 30 + 0.5),
-                decay: 0.08,
-                behavior: 'default',
-                gravity: 0.02
-              });
-              if (p) p.alpha = alphaValue;
+            if (shouldEmit) {
+              const speed = fw.velocity.length();
+              const t = fw.lifeTime;  // 时间用于动画效果
+              
+              // 根据轨迹类型确定尾焰参数
+              const trajectoryType = fw.ascension;
+              const trajectoryName = (fw.ascension || 'LINEAR').toUpperCase();
+              
+              // 基础参数
+              let trailCount = 1;        // 每帧生成数量
+              let trailSize = 6;         // 尾焰大小
+              let trailDecay = 0.05;     // 衰减速度 (越小拖尾越长)
+              let trailSpread = 1.0;     // 横向扩散
+              let trailGravity = 0.01;   // 受重力影响
+              let offsetX = 0, offsetZ = 0;
+              let extraBrightness = 1.0; 
+              let baseHue = fw.hue;
+              
+              // === 轨迹视觉强化 ===
+
+              if (trajectoryName.includes('SPIRAL') || trajectoryName.includes('HELIX')) {
+                // 螺旋/DNA：双股螺旋，高密度，色彩分离
+                trailCount = 2; // 每步2个点 (双螺旋)
+                trailSize = 5;
+                trailDecay = 0.04;
+                const spiralSpeed = 10;
+                const spiralRadius = 12.0; // [VISIBILITY] 增加半径到 12 (原 3.5)
+                
+                // 计算螺旋偏移
+                const angle = t * spiralSpeed;
+                offsetX = Math.cos(angle) * spiralRadius;
+                offsetZ = Math.sin(angle) * spiralRadius;
+                
+                // 颜色偏移：让两条螺旋线颜色稍微不同 (亮度区分)
+                extraBrightness = 1.5;
+
+              } else if (trajectoryName.includes('ZIGZAG') || trajectoryName.includes('SINE') || trajectoryName.includes('WOBBLE')) {
+                // S型/摇摆：大幅度摆动，更宽的拖尾
+                trailCount = 2;
+                trailSize = 6;
+                trailDecay = 0.03; 
+                const waveAmp = 25.0; // [VISIBILITY] 增加幅度到 25
+                const waveFreq = 6.0;
+                
+                // 垂直于运动方向的摆动
+                offsetX = Math.sin(t * waveFreq) * waveAmp;
+                // Z轴稍微错开增加立体感
+                offsetZ = Math.cos(t * waveFreq * 0.7) * (waveAmp * 0.4);
+                
+                trailSpread = 2.0;
+
+              } else if (trajectoryName.includes('ACCELERATE') || trajectoryName === '极速推进') {
+                // 加速/火箭：细长，极为明亮的核心，伴随烟雾
+                trailCount = 6;     // 更多粒子
+                trailSize = 8;        // 核心很大
+                trailDecay = 0.015;   // 极长拖尾
+                trailSpread = 0.8;    // 收束
+                extraBrightness = 4.0; // 爆亮
+                trailGravity = 0;     // 无重力
+                baseHue = 30;         // 强制偏向火焰色 (橙/黄) 如果不是 override
+                if (Math.random() < 0.3) baseHue = fw.hue; // 偶尔混合原本颜色
+
+              } else if (trajectoryName.includes('BEZIER') || trajectoryName.includes('CURVE')) {
+                // 曲线：平滑，优雅
+                trailCount = 1;
+                trailSize = 5;
+                trailDecay = 0.04;
+                extraBrightness = 1.2;
+              }
+
+              // 生成粒子
+              const spawnProbability = Math.min(1.0, speed / 10); 
+              const alphaValue = Math.min(1, speed / 15) * extraBrightness;
+              const emissiveBoost = (2.0 + speed * 0.2) * extraBrightness;
+
+              for (let tc = 0; tc < trailCount; tc++) {
+                if (Math.random() < spawnProbability) {
+                  let finalOffX = offsetX;
+                  let finalOffZ = offsetZ;
+                  let pSize = trailSize;
+                  let pHue = baseHue;
+
+                  // 螺旋特殊处理：双股反相
+                  if (trajectoryName.includes('SPIRAL') || trajectoryName.includes('HELIX')) {
+                      // tc=0: 正相, tc=1: 反相 (PI)
+                      const phase = (tc % 2) * Math.PI;
+                      // 重算偏移以确保双股正确
+                      finalOffX = Math.cos(t * 10 + phase) * 12.0;
+                      finalOffZ = Math.sin(t * 10 + phase) * 12.0;
+                      
+                      // 双色
+                      pHue = fw.hue + (tc % 2 === 0 ? 0 : 180); 
+                      pSize = trailSize * 0.8;
+                  }
+
+                  const p = particlePoolRef.current.get({
+                    x: fw.position.x + finalOffX + (Math.random() - 0.5) * trailSpread,
+                    y: fw.position.y - 1.0, 
+                    z: fw.position.z + finalOffZ + (Math.random() - 0.5) * trailSpread,
+                    hue: pHue,  
+                    speed: 0, 
+                    size: pSize * (Math.random() * 0.4 + 0.8),
+                    decay: trailDecay * (Math.random() * 0.4 + 0.8),
+                    behavior: 'default',
+                    gravity: trailGravity
+                  });
+                  
+                  if (p) {
+                    p.alpha = alphaValue; 
+                    p.emissiveIntensity = emissiveBoost;
+                    // 加速尾焰反推效果
+                    if (trajectoryName.includes('ACCELERATE')) {
+                       p.velocity.y = -speed * 0.15;
+                       p.velocity.x *= 0.1;
+                       p.velocity.z *= 0.1;
+                    }
+                  }
+                }
+              }
+            }
+
+            // 爆炸逻辑
+            if (fw.exploded) {
+              fw.createExplosion(currentSettings, (opts) => particlePoolRef.current.get(opts));
+              fireworksRef.current.splice(i, 1);
             }
           }
 
-          // 爆炸逻辑
-          if (fw.exploded) {
-            fw.createExplosion(currentSettings, (opts) => particlePoolRef.current.get(opts));
-            fireworksRef.current.splice(i, 1);
-          }
+          // C. 全局粒子物理更新 (Verlet 积分)
+          particlePoolRef.current.update(subDt);
         }
-
-        // C. 全局粒子物理更新
-        particlePoolRef.current.update(dt);
       }
 
       // D. 同步粒子 Buffer 到 GPU
@@ -500,10 +659,13 @@ const FireworkScene3DInner: React.ForwardRefRenderFunction<FireworkScene3DHandle
         posArray[idx + 1] = p.position.y;
         posArray[idx + 2] = p.position.z;
 
+        // HDR 颜色计算：基础色 × alpha × 发光强度
+        // emissiveIntensity > 1.0 会产生 HDR 效果，与 Bloom 配合产生光溢出
         const color = p.getColor();
-        colArray[idx] = color.r * p.alpha;
-        colArray[idx + 1] = color.g * p.alpha;
-        colArray[idx + 2] = color.b * p.alpha;
+        const hdrMultiplier = p.alpha * Math.min(p.emissiveIntensity, 5.0);  // 限制最大强度避免过曝
+        colArray[idx] = color.r * hdrMultiplier;
+        colArray[idx + 1] = color.g * hdrMultiplier;
+        colArray[idx + 2] = color.b * hdrMultiplier;
       }
 
       // 隐藏非活动粒子

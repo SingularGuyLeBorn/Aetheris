@@ -6,6 +6,7 @@ import { FireworkScene3D, FireworkScene3DHandle } from './components/FireworkSce
 import { ModernSettingsPanel } from './components/ui/ModernSettingsPanel';
 import { TimeControlPanel } from './components/ui/TimeControlPanel';
 import { HUD3D } from './components/ui/HUD3D';
+import { DirectionIndicator } from './components/ui/DirectionIndicator';
 import { TutorialOverlay, useTutorial } from './components/ui/TutorialOverlay';
 import {
   AppSettings,
@@ -133,6 +134,9 @@ const App3D: React.FC = () => {
 
       {/* HUD 信息显示 */}
       <HUD3D />
+      
+      {/* 坐标轴方向指示器 */}
+      <DirectionIndicator />
 
       {/* 发射日志显示 (响应用户需求: 默认折叠，视觉精简) */}
       <div className="absolute bottom-10 left-6 z-50 pointer-events-none flex flex-col gap-2 max-w-sm">

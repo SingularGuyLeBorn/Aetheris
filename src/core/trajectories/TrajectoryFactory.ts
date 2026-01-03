@@ -115,6 +115,10 @@ export class TrajectoryCalculator {
     
     const result = velocity.clone();
     
+    // 缩放系数：防止水平力过大导致无法升空
+    // 原来的系数 (0.3-0.6) 太大，相当于每帧增加巨大速度，导致瞬间平移
+    // 调整为 0.02 - 0.05 级别，配合 gravity (~0.005)
+    
     switch (this.type) {
       // === 基础轨迹 ===
       case TrajectoryType.LINEAR:
@@ -123,45 +127,47 @@ export class TrajectoryCalculator {
         
       case TrajectoryType.SPIRAL: {
         const angle = t * this.spiralFrequency;
-        result.x += Math.cos(angle) * this.spiralAmplitude;
-        result.z += Math.sin(angle) * this.spiralAmplitude;
+        // 修正：增加 * dt，且大幅减小幅度
+        result.x += Math.cos(angle) * 0.04 * dt;
+        result.z += Math.sin(angle) * 0.04 * dt;
         result.y -= gravity * 1.5 * dt;
         break;
       }
       
       case TrajectoryType.ZIGZAG: {
-        result.x += Math.cos(t * this.waveFrequency) * this.waveAmplitude;
+        result.x += Math.cos(t * this.waveFrequency) * 0.05 * dt;
         result.y -= gravity * 1.5 * dt;
         break;
       }
       
       // === 加速类 ===
       case TrajectoryType.ACCELERATE:
+        // 减小加速幅度，更符合物理惯性
         if (t < 0.5) result.y -= gravity * 1.5 * dt;
-        else if (t < 1.0) result.y += 0.3 * dt;
+        else if (t < 1.0) result.y += 0.08 * dt; // 原 0.3
         else result.y -= gravity * 2.0 * dt;
         break;
         
       case TrajectoryType.DOUBLE_ACCELERATE:
         if (t < 0.3) result.y -= gravity * 1.2 * dt;
-        else if (t < 0.5) result.y += 0.4 * dt;  // 第一次加速
+        else if (t < 0.5) result.y += 0.1 * dt;  
         else if (t < 0.8) result.y -= gravity * 1.0 * dt;
-        else if (t < 1.0) result.y += 0.5 * dt;  // 第二次加速
+        else if (t < 1.0) result.y += 0.15 * dt;  
         else result.y -= gravity * 2.0 * dt;
         break;
         
       case TrajectoryType.TRIPLE_ACCELERATE:
         if (t < 0.2) result.y -= gravity * 1.0 * dt;
-        else if (t < 0.3) result.y += 0.3 * dt;  // 1st
+        else if (t < 0.3) result.y += 0.1 * dt;  
         else if (t < 0.5) result.y -= gravity * 0.8 * dt;
-        else if (t < 0.6) result.y += 0.4 * dt;  // 2nd
+        else if (t < 0.6) result.y += 0.12 * dt; 
         else if (t < 0.8) result.y -= gravity * 0.6 * dt;
-        else if (t < 0.9) result.y += 0.5 * dt;  // 3rd
+        else if (t < 0.9) result.y += 0.15 * dt; 
         else result.y -= gravity * 2.0 * dt;
         break;
         
       case TrajectoryType.DECELERATE: {
-        const decel = Math.max(0.3, 1 - t * 0.5);
+        const decel = Math.max(0.9, 1 - t * 0.1); // 减缓阻尼
         result.y -= gravity * 1.5 * dt;
         result.x *= decel;
         result.z *= decel;
@@ -171,31 +177,30 @@ export class TrajectoryCalculator {
       case TrajectoryType.MIXED_SPEED: {
         const cycle = Math.sin(t * 4) * 0.5 + 0.5;
         result.y -= gravity * (0.8 + cycle * 0.8) * dt;
-        if (cycle > 0.7) result.y += 0.2 * dt;
+        if (cycle > 0.7) result.y += 0.05 * dt;
         break;
       }
       
       // === 曲线类 ===
       case TrajectoryType.BEZIER_CURVE: {
-        // 简化贝塞尔: 添加渐变横向偏移
         const bezierT = Math.min(1, t / 2);
         const curveOffset = Math.sin(bezierT * Math.PI) * 2;
-        result.x += curveOffset * 0.1;
+        result.x += curveOffset * 0.02 * dt; 
         result.y -= gravity * 1.5 * dt;
         break;
       }
       
       case TrajectoryType.PARABOLA: {
         const paraT = Math.min(1, t / 1.5);
-        result.x += (1 - paraT) * 0.3;
+        result.x += (1 - paraT) * 0.05 * dt;
         result.y -= gravity * 1.5 * dt;
         break;
       }
       
       case TrajectoryType.SINE_WAVE: {
         const sinOffset = Math.sin(t * 6) * 1.5;
-        result.x += sinOffset * 0.1;
-        result.z += Math.cos(t * 6) * 0.8 * 0.1;
+        result.x += sinOffset * 0.03 * dt;
+        result.z += Math.cos(t * 6) * 0.8 * 0.03 * dt;
         result.y -= gravity * 1.5 * dt;
         break;
       }
@@ -203,8 +208,8 @@ export class TrajectoryCalculator {
       case TrajectoryType.HELIX: {
         const helixAngle = t * 8;
         const helixRadius = 0.4 + t * 0.1;
-        result.x += Math.cos(helixAngle) * helixRadius;
-        result.z += Math.sin(helixAngle) * helixRadius;
+        result.x += Math.cos(helixAngle) * helixRadius * 0.1 * dt; // 原乘数 implicit 1.0
+        result.z += Math.sin(helixAngle) * helixRadius * 0.1 * dt;
         result.y -= gravity * 1.2 * dt;
         break;
       }
@@ -215,8 +220,8 @@ export class TrajectoryCalculator {
           result.y -= gravity * 1.5 * dt;
         } else {
           const curveAngle = (t - 1.0) * 5;
-          result.x += Math.sin(curveAngle) * 0.5;
-          result.z += Math.cos(curveAngle) * 0.3;
+          result.x += Math.sin(curveAngle) * 0.06 * dt;
+          result.z += Math.cos(curveAngle) * 0.04 * dt;
           result.y -= gravity * 1.8 * dt;
         }
         break;
@@ -224,8 +229,8 @@ export class TrajectoryCalculator {
       case TrajectoryType.CURVE_TO_LINEAR:
         if (t < 1.0) {
           const curveAngle = t * 5;
-          result.x += Math.sin(curveAngle) * 0.5;
-          result.z += Math.cos(curveAngle) * 0.3;
+          result.x += Math.sin(curveAngle) * 0.06 * dt;
+          result.z += Math.cos(curveAngle) * 0.04 * dt;
           result.y -= gravity * 1.2 * dt;
         } else {
           result.y -= gravity * 1.5 * dt;
@@ -236,24 +241,24 @@ export class TrajectoryCalculator {
         const segment = Math.floor(t / 0.5);
         const angles = [0, Math.PI/4, -Math.PI/4, Math.PI/2, 0];
         const idx = Math.min(segment, angles.length - 1);
-        result.x += Math.sin(angles[idx]) * 0.3;
-        result.z += Math.cos(angles[idx]) * 0.2;
+        result.x += Math.sin(angles[idx]) * 0.06 * dt; // 原 0.3
+        result.z += Math.cos(angles[idx]) * 0.04 * dt;
         result.y -= gravity * 1.5 * dt;
         break;
       }
       
       // === 特殊类 ===
       case TrajectoryType.WOBBLE:
-        result.x += (Math.random() - 0.5) * 1.0;
-        result.z += (Math.random() - 0.5) * 1.0;
+        result.x += (Math.random() - 0.5) * 0.1 * dt; // 原 1.0
+        result.z += (Math.random() - 0.5) * 0.1 * dt;
         result.y -= gravity * 1.5 * dt;
         break;
         
       case TrajectoryType.FALL_RISE:
         if (t < 0.3) {
-          result.y -= gravity * 2.5 * dt; // 快速下落
+          result.y -= gravity * 2.5 * dt; 
         } else if (t < 0.6) {
-          result.y += 0.8 * dt; // 急速上升
+          result.y += 0.2 * dt; // 原 0.8
         } else {
           result.y -= gravity * 1.5 * dt;
         }
@@ -262,8 +267,8 @@ export class TrajectoryCalculator {
       case TrajectoryType.ORBIT: {
         const orbitAngle = t * 6;
         const orbitRadius = 0.6;
-        result.x = Math.cos(orbitAngle) * orbitRadius * result.y * 0.02;
-        result.z = Math.sin(orbitAngle) * orbitRadius * result.y * 0.02;
+        result.x = Math.cos(orbitAngle) * orbitRadius * 0.05 * dt;
+        result.z = Math.sin(orbitAngle) * orbitRadius * 0.05 * dt;
         result.y -= gravity * 1.3 * dt;
         break;
       }
