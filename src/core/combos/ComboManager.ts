@@ -153,7 +153,8 @@ export class ComboGenerator {
           shape: baseShape,
           scale: 1.5,
           particleCount: 1.2,
-          hueShift: 0
+          hueShift: 0,
+          velocityScale: 1.4 // 增加爆发力
         });
         break;
         
@@ -291,7 +292,7 @@ export class ComboGenerator {
           scale: 1.5,
           particleCount: 1.2,
           hueShift: 0,
-          velocityScale: 1.5,
+          velocityScale: 1.8, // 进一步增加升腾动力
           spawnOffset: { x: 0, y: -80, z: 0 }
         });
         trajectory = TrajectoryType.FALL_RISE;
@@ -342,7 +343,8 @@ export class ComboGenerator {
           shape: Shape3DType.GALAXY_SPIRAL,
           scale: 1.5,
           particleCount: 1,
-          hueShift: 260
+          hueShift: 260,
+          velocityScale: 1.2 // 增加过渡动感
         });
         break;
         

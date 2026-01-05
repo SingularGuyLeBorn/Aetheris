@@ -1,0 +1,146 @@
+{
+  "id": "heart_to_text",
+  "name": "爱的箴言",
+  "description": "从爱心变形为文字'LOVE'，传递爱的信息",
+  "tags": ["浪漫", "变形", "文字"],
+  "duration": 7,
+  
+  "carrier": {
+    "type": "projectile",
+    "path": {
+      "type": "arc",
+      "points": [],
+      "speedCurve": { "type": "easeOut" }
+    },
+    "duration": 1.5,
+    "trail": {
+      "emissionRate": 80,
+      "lifeTime": 0.4,
+      "colorGradient": {
+        "stops": [
+          { "position": 0, "hue": 350, "saturation": 1, "lightness": 0.8 },
+          { "position": 1, "hue": 340, "saturation": 0.8, "lightness": 0.4 }
+        ]
+      },
+      "texture": "spark",
+      "size": 0.25
+    }
+  },
+  
+  "payload": {
+    "stages": [
+      {
+        "id": "heart_burst",
+        "name": "爱心绽放",
+        "timeOffset": 0,
+        "duration": 2,
+        "topology": {
+          "type": "mathematical_shape",
+          "source": "heart_3d",
+          "resolution": 2000,
+          "scale": 35
+        },
+        "dynamics": {
+          "transitionMode": "explode",
+          "initialVelocity": {
+            "mode": "radial",
+            "speed": [40, 70]
+          },
+          "forceFields": [
+            { "type": "drag", "strength": 0.08 }
+          ],
+          "velocityProfile": { "type": "easeOut" }
+        },
+        "rendering": {
+          "colorMap": {
+            "stops": [
+              { "position": 0, "hue": 350, "saturation": 1, "lightness": 0.7 },
+              { "position": 0.5, "hue": 345, "saturation": 1, "lightness": 0.55 },
+              { "position": 1, "hue": 340, "saturation": 0.9, "lightness": 0.45 }
+            ]
+          },
+          "sizeCurve": { "type": "linear" },
+          "baseSize": 1.3,
+          "blending": "additive",
+          "glowIntensity": 1.8
+        }
+      },
+      {
+        "id": "morph_to_text",
+        "name": "化作文字",
+        "timeOffset": 2,
+        "duration": 2.5,
+        "reuseParticles": true,
+        "topology": {
+          "type": "text_points",
+          "source": "LOVE",
+          "resolution": 2000,
+          "scale": 25
+        },
+        "dynamics": {
+          "transitionMode": "morph",
+          "initialVelocity": {
+            "mode": "target_seeking",
+            "speed": 25
+          },
+          "forceFields": [
+            { "type": "drag", "strength": 0.015 }
+          ],
+          "velocityProfile": { "type": "easeInOut" },
+          "morphAttractionStrength": 70,
+          "morphDamping": 0.88
+        },
+        "rendering": {
+          "colorMap": {
+            "stops": [
+              { "position": 0, "hue": 355, "saturation": 1, "lightness": 0.65 },
+              { "position": 0.5, "hue": 20, "saturation": 1, "lightness": 0.6 },
+              { "position": 1, "hue": 45, "saturation": 1, "lightness": 0.55 }
+            ]
+          },
+          "sizeCurve": { "type": "linear" },
+          "baseSize": 1.1,
+          "blending": "additive",
+          "glowIntensity": 1.5
+        }
+      },
+      {
+        "id": "text_glow",
+        "name": "文字闪烁",
+        "timeOffset": 4.5,
+        "duration": 2.5,
+        "reuseParticles": true,
+        "topology": {
+          "type": "text_points",
+          "source": "LOVE",
+          "resolution": 2000,
+          "scale": 25
+        },
+        "dynamics": {
+          "transitionMode": "maintain",
+          "initialVelocity": {
+            "mode": "target_seeking",
+            "speed": 3
+          },
+          "forceFields": [
+            { "type": "turbulence", "strength": 2, "noiseFrequency": 0.2, "noiseAmplitude": 0.8 }
+          ],
+          "velocityProfile": { "type": "linear" }
+        },
+        "rendering": {
+          "colorMap": {
+            "stops": [
+              { "position": 0, "hue": 50, "saturation": 1, "lightness": 0.8 },
+              { "position": 0.5, "hue": 355, "saturation": 1, "lightness": 0.6 },
+              { "position": 1, "hue": 340, "saturation": 0.8, "lightness": 0.4, "alpha": 0.3 }
+            ]
+          },
+          "sizeCurve": { "type": "easeOut" },
+          "baseSize": 1.0,
+          "blending": "additive",
+          "glowIntensity": 2
+        }
+      }
+    ]
+  }
+}

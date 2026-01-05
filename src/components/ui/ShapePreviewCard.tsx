@@ -177,37 +177,52 @@ export const ShapePreview3D: React.FC<ShapePreview3DProps> = ({
   useEffect(() => {
     if (!pointsRef.current || !shapeType) return;
     
-    const shape3DPoints = Shape3DFactory.generate(shapeType, 500, 1, 180);
+    // 生成点数据 (Float32Array)
+    // 缩放比例设为 0.5 以适应小窗口
+    const shape3DPoints = Shape3DFactory.generate(shapeType, 1000, 0.5);
     const geometry = pointsRef.current.geometry;
     const positions = geometry.attributes.position.array as Float32Array;
     const colors = geometry.attributes.color.array as Float32Array;
     
+    // 获取形状基础颜色
+    const hexColor = Shape3DFactory.getShapeColor(shapeType);
+    const baseColor = new THREE.Color(hexColor);
+    const baseHSL = { h: 0, s: 0, l: 0 };
+    baseColor.getHSL(baseHSL);
+
     // 清空
     positions.fill(0);
     colors.fill(0);
     
     // 填充新点
-    for (let i = 0; i < Math.min(shape3DPoints.length, 1000); i++) {
-      const point = shape3DPoints[i];
+    const pointCount = Math.floor(shape3DPoints.length / 3);
+    const displayCount = Math.min(pointCount, 3000); // 限制显示数量
+    
+    for (let i = 0; i < displayCount; i++) {
       const idx = i * 3;
       
-      positions[idx] = point.position.x;
-      positions[idx + 1] = point.position.y;
-      positions[idx + 2] = point.position.z;
+      positions[idx] = shape3DPoints[idx];
+      positions[idx + 1] = shape3DPoints[idx + 1];
+      positions[idx + 2] = shape3DPoints[idx + 2];
       
-      // HSL to RGB
-      const h = point.hue / 360;
-      const s = 0.7;
-      const l = 0.6;
-      const { r, g, b } = hslToRgb(h, s, l);
+      // 颜色微调：让颜色有点变化，不至于太平板
+      // 基于索引的轻微色相偏移和亮度变化
+      const hueVar = baseHSL.h + (Math.random() - 0.5) * 0.05; 
+      const lightVar = baseHSL.l + (Math.random() - 0.5) * 0.2;
       
-      colors[idx] = r;
-      colors[idx + 1] = g;
-      colors[idx + 2] = b;
+      const pColor = new THREE.Color().setHSL(hueVar, baseHSL.s, Math.max(0, Math.min(1, lightVar)));
+      
+      colors[idx] = pColor.r;
+      colors[idx + 1] = pColor.g;
+      colors[idx + 2] = pColor.b;
     }
     
     geometry.attributes.position.needsUpdate = true;
     geometry.attributes.color.needsUpdate = true;
+    
+    // 自动清理
+    geometry.setDrawRange(0, displayCount);
+    
   }, [shapeType]);
   
   const info = shapeType ? SHAPE_3D_INFO[shapeType] : null;

@@ -2,7 +2,7 @@ import { Vector3 } from './Vector3';
 import { ExplosionType, AscensionType, ColorStyle, AppSettings, ParticleOptions3D, FireworkConfig } from '../types';
 import { Particle3D } from './Particle3D';
 import { TrajectoryFactory, TrajectoryCalculator, TrajectoryType } from './trajectories/TrajectoryFactory';
-import { Shape3DFactory, Shape3DType } from './shapes/Shape3DFactory';
+import { Shape3DGenerator, Shape3DType } from './shapes/Shape3DFactory';
 import { ComboManager, ComboConfig, ComboType } from './combos/ComboManager';
 
 export interface Firework3DOptions {
@@ -107,8 +107,8 @@ export class Firework3D {
       [ExplosionType.FLOWER]: Shape3DType.FLOWER_3D,
       [ExplosionType.FISH]: Shape3DType.FISH_3D,
       [ExplosionType.SATURN]: Shape3DType.PLANET_RINGS,
-      [ExplosionType.HELIX]: Shape3DType.HELIX_TUBE,
-      [ExplosionType.WATERFALL]: Shape3DType.WATERFALL_3D,
+      [ExplosionType.HELIX]: Shape3DType.GALAXY_SPIRAL, // 映射到螺旋星系
+      [ExplosionType.WATERFALL]: Shape3DType.CASCADE, // 映射到瀑布级联
     };
     
     return mapping[shape] || Shape3DType.SPHERE;
@@ -175,7 +175,17 @@ export class Firework3D {
     const hue = (this.hue + stage.hueShift) % 360;
 
     // 获取真3D形状点分布
-    const points = Shape3DFactory.generate(stage.shape, baseCount, scale, hue);
+    const resultPoints = Shape3DGenerator.generate(stage.shape, baseCount, scale);
+    
+    // 构造带属性的点数组
+    const points: any[] = [];
+    for (let i = 0; i < resultPoints.length; i += 3) {
+      points.push({
+        position: new Vector3(resultPoints[i], resultPoints[i+1], resultPoints[i+2]),
+        hue: hue,
+        size: stage.particleSize || 2
+      });
+    }
     
     // 计算 decay: 如果有 override，反推 decay
     let finalDecay = stage.decay ?? (0.01 + Math.random() * 0.015);
@@ -214,8 +224,11 @@ export class Firework3D {
         const dist = p.position.length();
         if (dist > 0) {
           const dir = p.position.clone().normalize();
-          // 让扩散速度与其在形状中的距离成正比，实现按比例缩放膨胀
-          const expandSpeed = (stage.velocityScale || 1.0) * (dist * 0.5); 
+          // 强化爆发动画效果：
+          // 1. 增加基础爆发初速度 (0.15)，确保接近中心的点也能“弹”射出去
+          // 2. 将扩张系数从 0.08 提升至 0.12，模拟几何体那种强力炸开的感觉
+          const boost = 0.15;
+          const expandSpeed = (stage.velocityScale || 1.0) * (dist * 0.12 + boost); 
           particle.velocity.x = dir.x * expandSpeed;
           particle.velocity.y = dir.y * expandSpeed;
           particle.velocity.z = dir.z * expandSpeed;

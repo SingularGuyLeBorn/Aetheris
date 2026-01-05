@@ -1,0 +1,201 @@
+{
+  "id": "dragon_dance",
+  "name": "游龙戏珠",
+  "description": "东方神龙盘旋飞舞，气势磅礴",
+  "tags": ["中国风", "生物", "宏大"],
+  "duration": 9,
+  
+  "carrier": {
+    "type": "comet",
+    "path": {
+      "type": "helix",
+      "points": [],
+      "speedCurve": { "type": "easeOut" },
+      "spiralRadius": 8,
+      "spiralFrequency": 3
+    },
+    "duration": 2.5,
+    "trail": {
+      "emissionRate": 120,
+      "lifeTime": 0.6,
+      "colorGradient": {
+        "stops": [
+          { "position": 0, "hue": 45, "saturation": 1, "lightness": 0.9 },
+          { "position": 0.4, "hue": 30, "saturation": 1, "lightness": 0.6 },
+          { "position": 1, "hue": 0, "saturation": 1, "lightness": 0.3 }
+        ]
+      },
+      "texture": "flame",
+      "size": 0.4
+    }
+  },
+  
+  "payload": {
+    "stages": [
+      {
+        "id": "dragon_appear",
+        "name": "神龙初现",
+        "timeOffset": 0,
+        "duration": 1.5,
+        "topology": {
+          "type": "mathematical_shape",
+          "source": "explosion_burst",
+          "resolution": 4000,
+          "scale": 45
+        },
+        "dynamics": {
+          "transitionMode": "explode",
+          "initialVelocity": {
+            "mode": "radial",
+            "speed": [60, 90]
+          },
+          "forceFields": [
+            { "type": "drag", "strength": 0.12 },
+            { "type": "vortex", "strength": 15, "center": { "x": 0, "y": 0, "z": 0 }, "radius": 80 }
+          ],
+          "velocityProfile": { "type": "easeOut" }
+        },
+        "rendering": {
+          "colorMap": {
+            "stops": [
+              { "position": 0, "hue": 50, "saturation": 1, "lightness": 0.95 },
+              { "position": 0.3, "hue": 40, "saturation": 1, "lightness": 0.7 },
+              { "position": 0.7, "hue": 0, "saturation": 1, "lightness": 0.5 },
+              { "position": 1, "hue": 350, "saturation": 0.9, "lightness": 0.35 }
+            ]
+          },
+          "sizeCurve": { "type": "easeOut" },
+          "baseSize": 1.4,
+          "blending": "additive",
+          "useBlackbodyRadiation": true,
+          "initialTemperature": 6500,
+          "glowIntensity": 2.2
+        }
+      },
+      {
+        "id": "dragon_form",
+        "name": "龙形聚合",
+        "timeOffset": 1.5,
+        "duration": 2.5,
+        "reuseParticles": true,
+        "topology": {
+          "type": "mathematical_shape",
+          "source": "dragon_3d",
+          "resolution": 4000,
+          "scale": 50
+        },
+        "dynamics": {
+          "transitionMode": "morph",
+          "initialVelocity": {
+            "mode": "target_seeking",
+            "speed": 35
+          },
+          "forceFields": [
+            { "type": "drag", "strength": 0.02 },
+            { "type": "vortex", "strength": 8, "center": { "x": 0, "y": 0, "z": 0 }, "radius": 100 }
+          ],
+          "velocityProfile": { "type": "easeInOut" },
+          "morphAttractionStrength": 90,
+          "morphDamping": 0.93
+        },
+        "rendering": {
+          "colorMap": {
+            "stops": [
+              { "position": 0, "hue": 45, "saturation": 1, "lightness": 0.8 },
+              { "position": 0.3, "hue": 30, "saturation": 1, "lightness": 0.65 },
+              { "position": 0.6, "hue": 10, "saturation": 1, "lightness": 0.55 },
+              { "position": 1, "hue": 0, "saturation": 0.9, "lightness": 0.45 }
+            ]
+          },
+          "sizeCurve": { "type": "linear" },
+          "baseSize": 1.2,
+          "blending": "additive",
+          "glowIntensity": 1.8
+        }
+      },
+      {
+        "id": "dragon_dance",
+        "name": "龙腾九天",
+        "timeOffset": 4,
+        "duration": 3,
+        "reuseParticles": true,
+        "topology": {
+          "type": "mathematical_shape",
+          "source": "dragon_3d",
+          "resolution": 4000,
+          "scale": 55
+        },
+        "dynamics": {
+          "transitionMode": "maintain",
+          "initialVelocity": {
+            "mode": "target_seeking",
+            "speed": 8
+          },
+          "forceFields": [
+            { "type": "vortex", "strength": 12, "center": { "x": 0, "y": 10, "z": 0 }, "radius": 120 },
+            { "type": "turbulence", "strength": 6, "noiseFrequency": 0.25, "noiseAmplitude": 2 }
+          ],
+          "velocityProfile": { "type": "linear" }
+        },
+        "rendering": {
+          "colorMap": {
+            "stops": [
+              { "position": 0, "hue": 50, "saturation": 1, "lightness": 0.85 },
+              { "position": 0.4, "hue": 25, "saturation": 1, "lightness": 0.65 },
+              { "position": 1, "hue": 0, "saturation": 1, "lightness": 0.5 }
+            ]
+          },
+          "sizeCurve": { "type": "linear" },
+          "baseSize": 1.3,
+          "blending": "additive",
+          "glowIntensity": 2
+        },
+        "shaderAnimation": {
+          "vertexModifier": "dragon_undulate",
+          "parameters": { "frequency": 1.5, "amplitude": 8, "waveSpeed": 2 }
+        }
+      },
+      {
+        "id": "dragon_scatter",
+        "name": "化龙归天",
+        "timeOffset": 7,
+        "duration": 2,
+        "reuseParticles": true,
+        "topology": {
+          "type": "mathematical_shape",
+          "source": "chaos_scatter",
+          "resolution": 4000,
+          "scale": 100
+        },
+        "dynamics": {
+          "transitionMode": "scatter",
+          "initialVelocity": {
+            "mode": "random",
+            "speed": [10, 25]
+          },
+          "forceFields": [
+            { "type": "gravity", "strength": 6, "direction": { "x": 0, "y": -1, "z": 0 } },
+            { "type": "wind", "strength": 8, "direction": { "x": 0.7, "y": 0.3, "z": 0.5 } },
+            { "type": "turbulence", "strength": 10, "noiseFrequency": 0.4, "noiseAmplitude": 4 }
+          ],
+          "velocityProfile": { "type": "linear" }
+        },
+        "rendering": {
+          "colorMap": {
+            "stops": [
+              { "position": 0, "hue": 40, "saturation": 1, "lightness": 0.6, "alpha": 1 },
+              { "position": 0.4, "hue": 20, "saturation": 0.8, "lightness": 0.4, "alpha": 0.6 },
+              { "position": 1, "hue": 0, "saturation": 0.3, "lightness": 0.2, "alpha": 0 }
+            ]
+          },
+          "sizeCurve": { "type": "easeOut" },
+          "baseSize": 0.9,
+          "blending": "additive",
+          "useBlackbodyRadiation": true,
+          "initialTemperature": 2000,
+          "coolingRate": 400
+        }
+      }
+    ]
+  }
+}
