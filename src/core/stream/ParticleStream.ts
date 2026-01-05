@@ -226,7 +226,8 @@ export class ParticleStream {
     count: number,
     topology: TopologyConfig,
     dynamics: DynamicsConfig,
-    rendering: RenderingConfig
+    rendering: RenderingConfig,
+    seedPositions?: Vector3[] // ★ New Optional Argument
   ): void {
     this.state = StreamState.SPAWNING;
     
@@ -265,15 +266,47 @@ export class ParticleStream {
       const particle = this.acquireParticle();
       const targetPoint = targetPoints[i % targetPoints.length];
       
-      // 关键修复：结构保持模式下，粒子直接出现在目标位置！
-      if (isStructurePreserve) {
-        // 粒子直接出现在形状位置
+      // ★ 核心修复：更智能的初始位置逻辑
+      if (seedPositions && seedPositions.length > 0) {
+          // Case 1: 有种子位置 (从上一阶段无缝继承)
+          if (i < seedPositions.length) {
+              // 1.1 直接继承对应种子
+              const seed = seedPositions[i];
+              particle.position = new Vector3(seed.x, seed.y, seed.z);
+          } else {
+              // 1.2 "生长"逻辑：超出种子数量的粒子，从已有种子的附近随机生长出来
+              // 随机选择一个依附点（更倾向于外围点）
+              const parentIndex = Math.floor(Math.random() * seedPositions.length);
+              const parent = seedPositions[parentIndex];
+              
+              // 在父节点周围随机偏移，模拟从边缘生长
+              // 偏移大小随粒子总数增加而略微增加，防止过于拥挤
+              const offsetRadius = 2.0 + Math.random() * 2.0; 
+              const theta = Math.random() * Math.PI * 2;
+              const phi = Math.acos(2 * Math.random() - 1);
+              
+              particle.position = new Vector3(
+                  parent.x + Math.sin(phi) * Math.cos(theta) * offsetRadius,
+                  parent.y + Math.sin(phi) * Math.sin(theta) * offsetRadius,
+                  parent.z + Math.cos(phi) * offsetRadius
+              );
+          }
+          
+          // 如果有种子，由于位置已经很接近目标或就是目标的一部分，速度需要柔和
+          // 覆盖 dynamics 中的剧烈速度
+          particle.velocity = new Vector3(
+              (Math.random() - 0.5) * 2, // 只是微动
+              (Math.random() - 0.5) * 2,
+              (Math.random() - 0.5) * 2
+          );
+
+      } else if (isStructurePreserve) {
+        // Case 2: 结构保持 (直接出现在目标位置)
         particle.position = new Vector3(
           targetPoint.x + this.spawnCenter.x,
           targetPoint.y + this.spawnCenter.y,
           targetPoint.z + this.spawnCenter.z
         );
-        // 只有非常微小的随机扰动
         const jitter = 0.5;
         particle.velocity = new Vector3(
           (Math.random() - 0.5) * jitter,
@@ -281,13 +314,12 @@ export class ParticleStream {
           (Math.random() - 0.5) * jitter
         );
       } else {
-        // 传统模式：粒子从中心生成，飞向目标
+        // Case 3: 传统爆炸 (从中心点出发)
         particle.position = new Vector3(
           this.spawnCenter.x,
           this.spawnCenter.y,
           this.spawnCenter.z
         );
-        // 设置初始速度
         this.setInitialVelocity(particle, dynamics, targetPoint);
       }
       
@@ -891,12 +923,7 @@ export class ParticleStream {
     }
   }
 
-  /**
-   * 获取活跃粒子数据 (用于渲染)
-   */
-  getParticleData(): StreamParticle[] {
-    return this.particles.filter(p => !p.isDead);
-  }
+
 
   /**
    * 获取粒子数量

@@ -491,7 +491,14 @@ export class Director {
       carrier: {
         type: 'invisible',
         path: { type: 'linear', points: [], speedCurve: PRESET_CURVES.LINEAR },
-        duration: 0.5
+        duration: 0.5,
+        trail: {
+          emissionRate: 0,
+          lifeTime: 0,
+          colorGradient: { stops: [] },
+          texture: 'spark',
+          size: 0
+        }
       },
       
       payload: {
@@ -647,14 +654,17 @@ export class Director {
     });
     firework.particleStream.setSpawnCenter(firework.targetPosition);
 
-    // 开始第一个阶段
-    this.startStage(firework, 0);
+    // ★ 关键变更：获取运载器的最终粒子位置作为种子
+    const carrierPositions = this.carrierSystem.getFinalParticlePositions(firework.carrierId!);
+
+    // 开始第一个阶段，传入种子
+    this.startStage(firework, 0, carrierPositions);
   }
 
   /**
    * 开始指定阶段
    */
-  private startStage(firework: RuntimeFirework, stageIndex: number): void {
+  private startStage(firework: RuntimeFirework, stageIndex: number, seedPositions: Vector3[] = []): void {
     const stages = firework.manifest.payload.stages;
     if (stageIndex >= stages.length) {
       // 所有阶段完成，开始消亡
@@ -677,24 +687,25 @@ export class Director {
     }
 
     // 根据过渡模式执行
-  const topology = stage.topology;
+    const topology = stage.topology;
   
-  switch (stage.dynamics.transitionMode) {
-    case 'explode':
-    case 'accumulate':
-    case 'scatter':
-      // 生成新粒子 (增加安全检查)
-      if (topology) {
-        stream.spawn(
-          topology.resolution || 1000,
-          topology,
-          stage.dynamics,
-          stage.rendering
-        );
-      } else {
-        console.warn(`[Director] Stage ${stage.id} requested spawn but has no topology.`);
-      }
-      break;
+    switch (stage.dynamics.transitionMode) {
+      case 'explode':
+      case 'accumulate':
+      case 'scatter':
+        // 生成新粒子 (增加安全检查)
+        if (topology) {
+          stream.spawn(
+            topology.resolution || 1000,
+            topology,
+            stage.dynamics,
+            stage.rendering,
+            seedPositions // ★ 传入种子位置
+          );
+        } else {
+          console.warn(`[Director] Stage ${stage.id} requested spawn but has no topology.`);
+        }
+        break;
       
       case 'morph':
         // 变形到新形状
@@ -711,8 +722,19 @@ export class Director {
               stage.topology.resolution || 1000,
               stage.topology,
               stage.dynamics,
-              stage.rendering
+              stage.rendering,
+              seedPositions // Pass seeds
             );
+            
+            // ★ Critical: If we spawned from seeds, we must IMMEDIATELY start the morph 
+            // to move them from Seed Position -> Target Topology
+            if (seedPositions && seedPositions.length > 0) {
+                 stream.startMorph(stage.topology, stage.rendering, { 
+                    duration: stage.duration, // Use full stage duration for smooth morph
+                    attractionStrength: stage.dynamics.morphAttractionStrength || 20,
+                    damping: stage.dynamics.morphDamping || 0.8
+                 });
+            }
           }
         } else {
           console.warn(`[Director] Stage ${stage.id} requested morph but has no topology.`);

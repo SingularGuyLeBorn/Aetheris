@@ -25,27 +25,80 @@ function generateShapePoints(shapeType: string, count: number = 200): Array<{x: 
   // --- B. 语义化预览映射 (用于非形状阶段) ---
   // 根据不同的效果名称生成代表性的 3D 点阵图案，提升美观度
   switch(shapeType) {
-    // 1. 上升/轨迹类 - 表现为竖直向上的特征
+    // 1. 上升/轨迹类 - 差异化预览
     case 'simple_trail':
-    case 'comet_tail':
-    case 'rocket_thrust':
     case 'fast_beam':
+      // 纯直线
       for(let i=0; i<count; i++) {
-        const r = Math.random() * 2;
-        points.push({ x: (Math.random()-0.5)*r, y: (i/count - 0.5) * 60, z: (Math.random()-0.5)*r });
+        points.push({ x: (Math.random()-0.5), y: (i/count - 0.5) * 60, z: (Math.random()-0.5) });
       }
       break;
+    case 'comet_tail':
+      // 头部密集，尾部发散
+      for(let i=0; i<count; i++) {
+        const progress = i/count;
+        const spread = progress * 5; 
+        points.push({ x: (Math.random()-0.5)*spread, y: (progress - 0.5) * 60, z: (Math.random()-0.5)*spread });
+      }
+      break;
+    case 'rocket_thrust':
+      // 倒锥形喷射
+      for(let i=0; i<count; i++) {
+        const progress = i/count; // 0=bottom, 1=top
+        const spread = (1-progress) * 8; // 底部宽，顶部窄
+        points.push({ x: (Math.random()-0.5)*spread, y: (progress - 0.5) * 60, z: (Math.random()-0.5)*spread });
+      }
+      break;
+    
     case 'dna_helix':
-    case 'sine_wave':
-    case 'gentle_snake':
-    case 'tight_spiral':
     case 'double_helix':
+      // 双螺旋
       for(let i=0; i<count; i++) {
         const t = i/count * Math.PI * 6;
-        const r = 8;
+        const r = 12;
+        points.push({ x: Math.sin(t)*r, y: (i/count-0.5)*60, z: Math.cos(t)*r });
+        points.push({ x: Math.sin(t+Math.PI)*r, y: (i/count-0.5)*60, z: Math.cos(t+Math.PI)*r });
+      }
+      break;
+      
+    case 'sine_wave':
+    case 'gentle_snake':
+      // 2D 波浪 (S型)
+      for(let i=0; i<count; i++) {
+        const t = i/count * Math.PI * 4;
+        const r = 15;
+        // z 轴保持接近 0，使其呈现平面波浪
+        points.push({ x: Math.sin(t)*r, y: (i/count-0.5)*60, z: (Math.random()-0.5)*2 });
+      }
+      break;
+
+    case 'tight_spiral':
+      // 紧密螺旋
+      for(let i=0; i<count; i++) {
+        const t = i/count * Math.PI * 12; // 更多圈数
+        const r = 6; // 更小半径
         points.push({ x: Math.sin(t)*r, y: (i/count-0.5)*60, z: Math.cos(t)*r });
       }
       break;
+      
+    case 'zigzag_climb':
+      // 之字形
+      for(let i=0; i<count; i++) {
+        const t = (i/count) * 10;
+        const zig = Math.floor(t) % 2 === 0 ? (t%1)*20 - 10 : 10 - (t%1)*20;
+        points.push({ x: zig, y: (i/count-0.5)*60, z: 0 });
+      }
+      break;
+
+    case 'random_wander':
+      // 随机游走
+       let cx = 0, cz = 0;
+       for(let i=0; i<count; i++) {
+         cx += (Math.random()-0.5)*2;
+         cz += (Math.random()-0.5)*2;
+         points.push({ x: cx, y: (i/count-0.5)*60, z: cz });
+       }
+       break;
 
     // 2. 动作/表演类 - 表现为旋转或膨胀的特征
     case 'rotate':

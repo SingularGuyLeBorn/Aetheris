@@ -13,7 +13,7 @@
 import { Vector3 } from '../Vector3';
 import { 
   CarrierConfig, 
-  Path3D, 
+  PathConfig, 
   PathType, 
   TrailConfig,
   Curve,
@@ -139,11 +139,17 @@ export class CarrierSystem {
    * 更新所有运载器
    */
   update(deltaTime: number): void {
+    let debugLogged = false;
     for (const carrier of this.carriers.values()) {
       if (!carrier.state.active) continue;
       
       this.updateCarrier(carrier, deltaTime);
       this.updateTrailParticles(carrier, deltaTime);
+
+      if (!debugLogged && Math.random() < 0.01) {
+          console.log(`[CarrierDebug] ID: ${carrier.id}, Elapsed: ${carrier.state.elapsed.toFixed(2)}/${carrier.config.duration}, Progress: ${carrier.state.progress.toFixed(2)}, Pos: ${carrier.state.position.y.toFixed(1)}, Trail: ${carrier.trailParticles.length}`);
+          debugLogged = true;
+      }
     }
   }
 
@@ -235,7 +241,7 @@ export class CarrierSystem {
   /**
    * 3D贝塞尔曲线路径
    */
-  private evaluateBezierPath(path: Path3D, start: Vector3, end: Vector3, t: number): Vector3 {
+  private evaluateBezierPath(path: PathConfig, start: Vector3, end: Vector3, t: number): Vector3 {
     const points = path.points || [];
     
     if (points.length === 0) {
@@ -291,7 +297,7 @@ export class CarrierSystem {
   /**
    * 螺旋路径 (锥形螺旋)
    */
-  private evaluateSpiralPath(path: Path3D, start: Vector3, end: Vector3, t: number): Vector3 {
+  private evaluateSpiralPath(path: PathConfig, start: Vector3, end: Vector3, t: number): Vector3 {
     const radius = path.spiralRadius || 10; // 默认大一点
     const freq = path.spiralFrequency || 4;
     
@@ -314,7 +320,7 @@ export class CarrierSystem {
   /**
    * S形路径 (蛇行或DNA)
    */
-  private evaluateHelixPath(path: Path3D, start: Vector3, end: Vector3, t: number): Vector3 {
+  private evaluateHelixPath(path: PathConfig, start: Vector3, end: Vector3, t: number): Vector3 {
     const radius = path.spiralRadius || 8;
     const freq = path.spiralFrequency || 3;
     
@@ -391,8 +397,8 @@ export class CarrierSystem {
         hue: 35 + Math.random() * 25, 
         saturation: 1,
         lightness: 0.7 + Math.random() * 0.3, // 稍微亮一点
-        alpha: 1,
-        size: trail.size * (0.8 + Math.random() * 1.2), // 稍微大一点
+        alpha: 1.0, // Force full alpha start
+        size: trail.size * (2.0 + Math.random() * 2.0), // significantly larger
         isDead: false
       };
       
@@ -465,6 +471,64 @@ export class CarrierSystem {
       }
     }
     return allParticles;
+  }
+
+  /**
+   * 获取运载器当前/最终的粒子世界坐标
+   * 用于将粒子无缝传递给下一阶段
+   */
+  getFinalParticlePositions(id: string): Vector3[] {
+    const carrier = this.carriers.get(id);
+    if (!carrier || !carrier.shapePoints) return [carrier?.state.position || new Vector3(0,0,0)];
+
+    const positions: Vector3[] = [];
+    const basePos = carrier.state.position;
+    const elapsed = carrier.state.elapsed;
+    const scale = Math.min(elapsed * 2, 1); // 应该是 1
+    
+    const shapeType = carrier.config.shape;
+    const isWinged = shapeType === 'phoenix' || shapeType === 'bird' || shapeType === 'butterfly' || shapeType === 'dragon_3d';
+    const isRotator = shapeType === 'star_3d' || shapeType === 'cube' || shapeType === 'pyramid' || shapeType === 'diamond' || shapeType === 'helix';
+
+    // 预计算旋转
+    let cosR = 1, sinR = 0;
+    if (isRotator) {
+        const angle = elapsed * 3;
+        cosR = Math.cos(angle);
+        sinR = Math.sin(angle);
+    }
+
+    for (const p of carrier.shapePoints) {
+        let px = p.x;
+        let py = p.y;
+        let pz = p.z;
+        
+        // 1. 振翅 (Flapping) - 保持与 Renderer 一致的逻辑
+        if (isWinged) {
+            const distCheck = Math.abs(px); 
+            if (distCheck > 2) { 
+                  const flapSpeed = 15;
+                  const flapAmp = distCheck * 0.3;
+                  py += Math.sin(elapsed * flapSpeed) * flapAmp;
+            }
+            py += Math.sin(elapsed * 6) * 0.5;
+        }
+
+        // 2. 自旋 (Spinning)
+        if (isRotator) {
+            const rx = px * cosR - pz * sinR;
+            const rz = px * sinR + pz * cosR;
+            px = rx;
+            pz = rz;
+        }
+
+        positions.push(new Vector3(
+            basePos.x + px * scale, 
+            basePos.y + py * scale, 
+            basePos.z + pz * scale
+        ));
+    }
+    return positions;
   }
 
   /**
